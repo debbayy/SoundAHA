@@ -6,12 +6,24 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "backgroundColor": "#07070F",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07070F"
+    },
     "plugins": [
       "expo-router",
       "expo-audio"
     ],
     "android": {
-      "package": "com.yourname.soundly"
-    }
+      "package": "com.debbayy.soundly",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#5B6CF0"
+      }
+    },
+    "web": { "favicon": "./assets/favicon.png" }
   }
 }
