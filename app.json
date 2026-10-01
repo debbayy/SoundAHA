@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Soundly",
+    "slug": "soundly",
+    "scheme": "soundly",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      "expo-audio"
+    ],
+    "android": {
+      "package": "com.yourname.soundly"
+    }
+  }
+}

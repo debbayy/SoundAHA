@@ -1,0 +1,33 @@
+import { View } from 'react-native';
+import { Tabs } from 'expo-router';
+import { BottomTabBar } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { theme } from '../../src/theme';
+import { MiniPlayer } from '../../src/components/MiniPlayer';
+
+const icon = (name: keyof typeof Ionicons.glyphMap) => ({ color, size }: { color: string; size: number }) =>
+  <Ionicons name={name} size={size} color={color} />;
+
+export default function TabsLayout() {
+  return (
+    <Tabs
+      tabBar={(props) => (
+        <View style={{ backgroundColor: theme.bg }}>
+          <MiniPlayer />
+          <BottomTabBar {...props} />
+        </View>
+      )}
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.muted,
+        tabBarStyle: { backgroundColor: theme.card, borderTopColor: theme.border },
+      }}
+    >
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home') }} />
+      <Tabs.Screen name="search" options={{ title: 'Search', tabBarIcon: icon('search') }} />
+      <Tabs.Screen name="favorites" options={{ title: 'Saved', tabBarIcon: icon('heart') }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: icon('person') }} />
+    </Tabs>
+  );
+}
