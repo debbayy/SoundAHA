@@ -18,12 +18,24 @@
       "expo-audio"
     ],
     "android": {
-      "package": "com.debbayy.soundly",
+      "package": "com.debytrisandi.soundly",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#5B6CF0"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
-    "web": { "favicon": "./assets/favicon.png" }
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3cf26a66-4b31-4a25-a81e-c3b91ca87fec"
+      }
+    }
   }
 }
