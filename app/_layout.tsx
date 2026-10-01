@@ -9,7 +9,7 @@ export default function RootLayout() {
     <AuthProvider>
       <LocalSoundsProvider>
         <PlayerProvider>
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="login" options={{ presentation: 'modal' }} />
           </Stack>

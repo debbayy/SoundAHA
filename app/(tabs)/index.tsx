@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { theme } from '../../src/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { GRADIENT, theme } from '../../src/theme';
 import { SoundRow } from '../../src/components/SoundRow';
 import { useSounds } from '../../src/data/useSounds';
+import { usePlayer } from '../../src/context/PlayerContext';
 import { useLocalSounds } from '../../src/context/LocalSoundsContext';
 
 const CATS = [
@@ -18,9 +20,11 @@ const CATS = [
 export default function Home() {
   const remote = useSounds();
   const { localSounds, importSounds } = useLocalSounds();
+  const { play } = usePlayer();
   const [cat, setCat] = useState('all');
   const sounds = [...localSounds, ...remote];
   const list = cat === 'all' ? sounds : sounds.filter((x) => x.category === cat);
+  const hero = remote.find((x) => x.category === 'trending') ?? remote[0];
 
   const onImport = async () => {
     try {
@@ -37,28 +41,54 @@ export default function Home() {
         data={list}
         keyExtractor={(x) => x.id}
         renderItem={({ item }) => <SoundRow sound={item} />}
-        contentContainerStyle={{ padding: 20 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 30 }}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={s.empty}>{cat === 'local' ? 'No imported sounds yet. Tap Import to pick audio from your phone.' : 'No sounds'}</Text>
+          <Text style={s.empty}>{cat === 'local' ? 'No imported sounds yet. Tap the + button to pick audio from your phone.' : 'No sounds'}</Text>
         }
         ListHeaderComponent={
-          <View style={{ marginBottom: 16 }}>
-            <View style={s.titleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.h1}>Soundly</Text>
+          <View style={{ marginBottom: 12 }}>
+            <View style={s.top}>
+              <View>
+                <Text style={s.h1}>Soundly<Text style={{ color: theme.accent2 }}>.</Text></Text>
                 <Text style={s.sub}>Sounds for every moment</Text>
               </View>
-              <Pressable onPress={onImport} style={s.importBtn} accessibilityLabel="Import audio from phone">
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={s.importText}>Import</Text>
+              <Pressable onPress={onImport} accessibilityLabel="Import audio from phone">
+                <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badge}>
+                  <Ionicons name="add" size={24} color="#fff" />
+                </LinearGradient>
               </Pressable>
             </View>
+
+            {hero && (
+              <Pressable onPress={() => play(hero)}>
+                <LinearGradient colors={['#7C5CFF', '#3B2BCC', '#00B8D9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.heroTag}>TRENDING NOW</Text>
+                    <Text style={s.heroTitle} numberOfLines={1}>{hero.title}</Text>
+                    <Text style={s.heroSub}>Tap to play instantly</Text>
+                  </View>
+                  <Text style={{ fontSize: 44, marginRight: 14 }}>{hero.emoji ?? '🔥'}</Text>
+                  <View style={s.heroBtn}><Ionicons name="play" size={22} color={theme.accent} style={{ marginLeft: 2 }} /></View>
+                </LinearGradient>
+              </Pressable>
+            )}
+
             <View style={s.chips}>
-              {CATS.map((c) => (
-                <Pressable key={c.key} onPress={() => setCat(c.key)} style={[s.chip, cat === c.key && s.chipOn]}>
-                  <Text style={[s.chipText, cat === c.key && { color: '#fff' }]}>{c.label}</Text>
-                </Pressable>
-              ))}
+              {CATS.map((c) => {
+                const on = cat === c.key;
+                return (
+                  <Pressable key={c.key} onPress={() => setCat(c.key)}>
+                    {on ? (
+                      <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.chip}>
+                        <Text style={[s.chipText, { color: '#fff' }]}>{c.label}</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={[s.chip, s.chipOff]}><Text style={s.chipText}>{c.label}</Text></View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         }
@@ -69,14 +99,18 @@ export default function Home() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg },
-  h1: { fontSize: 30, fontWeight: '800', color: theme.text },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  h1: { fontSize: 32, fontWeight: '800', color: theme.text, letterSpacing: -0.5 },
   sub: { color: theme.muted, marginTop: 2 },
-  titleRow: { flexDirection: 'row', alignItems: 'center' },
-  importBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.accent, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 },
-  importText: { color: '#fff', fontWeight: '700' },
+  badge: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   empty: { color: theme.muted, textAlign: 'center', marginTop: 40 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border },
-  chipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
-  chipText: { color: theme.text, fontWeight: '600' },
+  hero: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 26 },
+  heroTag: { color: 'rgba(255,255,255,0.75)', fontSize: 11, letterSpacing: 2, fontWeight: '700' },
+  heroTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 6 },
+  heroSub: { color: 'rgba(255,255,255,0.7)', marginTop: 4, fontSize: 12 },
+  heroBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 22, marginBottom: 6 },
+  chip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 },
+  chipOff: { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border },
+  chipText: { color: theme.text, fontWeight: '600', fontSize: 13 },
 });

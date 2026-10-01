@@ -19,9 +19,10 @@ export default function TabsLayout() {
       )}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.accent,
+        tabBarActiveTintColor: theme.accent2,
         tabBarInactiveTintColor: theme.muted,
-        tabBarStyle: { backgroundColor: theme.card, borderTopColor: theme.border },
+        tabBarStyle: { backgroundColor: theme.card, borderTopColor: theme.border, height: 64, paddingTop: 6 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home') }} />
