@@ -1,16 +1,18 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { theme } from '../theme';
 import { Sound } from '../types';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
+import { useLocalSounds } from '../context/LocalSoundsContext';
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 export function SoundRow({ sound }: { sound: Sound }) {
   const { play, current, playing } = usePlayer();
   const { favs, toggleFav } = useAuth();
+  const { removeSound } = useLocalSounds();
   const router = useRouter();
   const active = current?.id === sound.id && playing;
   const faved = favs.includes(sound.id);
@@ -19,19 +21,31 @@ export function SoundRow({ sound }: { sound: Sound }) {
     if (!(await toggleFav(sound.id))) router.push('/login');
   };
 
+  const onRemove = () =>
+    Alert.alert('Remove sound', `Remove "${sound.title}" from My Sounds?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => removeSound(sound.id) },
+    ]);
+
   return (
     <View style={s.row}>
       <View style={s.thumb}><Text style={{ fontSize: 24 }}>{sound.emoji ?? '🔊'}</Text></View>
       <View style={{ flex: 1 }}>
         <Text style={s.title}>{sound.title}</Text>
-        <Text style={s.sub}>{sound.category} • {fmt(sound.duration)}</Text>
+        <Text style={s.sub}>{sound.local ? 'My Sounds' : `${sound.category} • ${fmt(sound.duration)}`}</Text>
       </View>
       <Pressable hitSlop={8} onPress={() => play(sound)} style={s.play}>
         <Ionicons name={active ? 'pause' : 'play'} size={18} color="#fff" />
       </Pressable>
-      <Pressable hitSlop={8} onPress={onHeart} style={{ marginLeft: 12 }}>
-        <Ionicons name={faved ? 'heart' : 'heart-outline'} size={22} color={faved ? '#FF4D6D' : theme.muted} />
-      </Pressable>
+      {sound.local ? (
+        <Pressable hitSlop={8} onPress={onRemove} style={{ marginLeft: 12 }} accessibilityLabel="Remove sound">
+          <Ionicons name="trash-outline" size={22} color={theme.muted} />
+        </Pressable>
+      ) : (
+        <Pressable hitSlop={8} onPress={onHeart} style={{ marginLeft: 12 }}>
+          <Ionicons name={faved ? 'heart' : 'heart-outline'} size={22} color={faved ? '#FF4D6D' : theme.muted} />
+        </Pressable>
+      )}
     </View>
   );
 }

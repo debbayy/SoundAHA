@@ -20,8 +20,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent(s);
     try {
       ref.current?.remove();
-      if (!s.audio_url) { setPlaying(false); return; }
-      const p = createAudioPlayer({ uri: s.audio_url });
+      const source = s.audio_source ?? (s.audio_url ? { uri: s.audio_url } : null);
+      if (!source) { setPlaying(false); return; }
+      const p = createAudioPlayer(source);
       p.addListener('playbackStatusUpdate', (st) => { if (st.didJustFinish) setPlaying(false); });
       p.play();
       ref.current = p;
