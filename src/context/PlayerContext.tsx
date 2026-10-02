@@ -9,18 +9,34 @@ export const MAX_RATE = 2;
 export const RATE_STEP = 0.05;
 const clampRate = (r: number) => Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, r)) * 100) / 100;
 const RATE_KEY = 'soundly.playbackRate';
+const MODE_KEY = 'soundly.playMode';
+
+// autoplay: when a song ends, start the next one from the list it was played from.
+// loop:     repeat the current song forever (wins over autoplay).
+// shuffle:  "next" picks a random song instead of the following one.
+export type PlayMode = { autoplay: boolean; loop: boolean; shuffle: boolean };
+const DEFAULT_MODE: PlayMode = { autoplay: true, loop: false, shuffle: false };
 
 type Ctx = {
   current: Sound | null;
   playing: boolean;
   rate: number; // playback speed, 1 = normal
+  mode: PlayMode;
+  canSkip: boolean; // there is more than one song in the queue
   setRate: (rate: number, save?: boolean) => void; // apply a speed; save=false while the slider is still being dragged
-  play: (s: Sound) => void;
+  setMode: (patch: Partial<PlayMode>) => void;
+  play: (s: Sound, queue?: Sound[]) => void; // `queue` = the list the song was picked from
   toggle: () => void;
+  next: () => void;
+  prev: () => void;
   stopIf: (id: string) => void;
   seekTo: (seconds: number) => void; // jump to a position in the current song
 };
-const PlayerCtx = createContext<Ctx>({ current: null, playing: false, rate: 1, setRate: () => {}, play: () => {}, toggle: () => {}, stopIf: () => {}, seekTo: () => {} });
+const noop = () => {};
+const PlayerCtx = createContext<Ctx>({
+  current: null, playing: false, rate: 1, mode: DEFAULT_MODE, canSkip: false,
+  setRate: noop, setMode: noop, play: noop, toggle: noop, next: noop, prev: noop, stopIf: noop, seekTo: noop,
+});
 export const usePlayer = () => useContext(PlayerCtx);
 
 // Playback position changes several times a second. It lives in its own tiny store so only the
@@ -36,12 +52,22 @@ const setProgress = (next: Progress) => {
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const useProgress = () => useSyncExternalStore(subscribe, () => progress);
 
+const hasSource = (s: Sound) => !!(s.audio_source ?? s.audio_url);
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const ref = useRef<AudioPlayer | null>(null);
   const [current, setCurrent] = useState<Sound | null>(null);
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
-  const rateRef = useRef(1); // read inside play(), so the next song keeps the chosen speed
+  const [mode, setModeState] = useState<PlayMode>(DEFAULT_MODE);
+  const [queueLen, setQueueLen] = useState(0);
+
+  // Refs mirror the state the audio callbacks need, so they never read a stale value.
+  const rateRef = useRef(1);
+  const modeRef = useRef<PlayMode>(DEFAULT_MODE);
+  const currentRef = useRef<Sound | null>(null);
+  const queueRef = useRef<Sound[]>([]);
+  const historyRef = useRef<string[]>([]); // ids played before the current one, for "previous"
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'doNotMix' }).catch(() => {});
@@ -51,10 +77,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (v && r >= MIN_RATE && r <= MAX_RATE) { rateRef.current = r; setRateState(r); }
       })
       .catch(() => {});
+    AsyncStorage.getItem(MODE_KEY)
+      .then((v) => {
+        if (!v) return;
+        const m = { ...DEFAULT_MODE, ...JSON.parse(v) } as PlayMode;
+        modeRef.current = m;
+        setModeState(m);
+      })
+      .catch(() => {});
     return () => ref.current?.remove();
   }, []);
 
-  const play = (s: Sound) => {
+  const setQueue = (list: Sound[]) => {
+    queueRef.current = list;
+    setQueueLen(list.length);
+  };
+
+  // Next song to play after the current one, or null if there is none. Without shuffle the queue
+  // ends at its last song unless `wrap` is set (manual "next" wraps, autoplay does not).
+  const pickNext = (wrap: boolean): Sound | null => {
+    const q = queueRef.current;
+    const cur = currentRef.current;
+    if (!cur || q.length < 2) return null;
+    if (modeRef.current.shuffle) {
+      const pool = q.filter((x) => x.id !== cur.id && hasSource(x));
+      return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+    }
+    const i = q.findIndex((x) => x.id === cur.id);
+    for (let step = 1; step < q.length; step++) {
+      const idx = i + step;
+      if (idx >= q.length && !wrap) return null;
+      const cand = q[idx % q.length];
+      if (hasSource(cand)) return cand;
+    }
+    return null;
+  };
+
+  const startPlayback = (s: Sound) => {
+    currentRef.current = s;
     setCurrent(s);
     setProgress({ position: 0, duration: s.duration || 0 });
     try {
@@ -62,9 +122,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const source = s.audio_source ?? (s.audio_url ? { uri: s.audio_url } : null);
       if (!source) { setPlaying(false); return; }
       const p = createAudioPlayer(source, { updateInterval: 250 });
+      p.loop = modeRef.current.loop;
       p.addListener('playbackStatusUpdate', (st) => {
         setProgress({ position: st.currentTime, duration: st.duration || progress.duration });
-        if (st.didJustFinish) setPlaying(false);
+        if (st.didJustFinish) onEnded.current();
       });
       p.play();
       p.shouldCorrectPitch = true; // keep the voice natural when sped up or slowed down
@@ -82,6 +143,52 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const play = (s: Sound, list?: Sound[]) => {
+    if (list) setQueue(list);
+    else if (!queueRef.current.some((x) => x.id === s.id)) setQueue([s]);
+    const prevSong = currentRef.current;
+    if (prevSong && prevSong.id !== s.id) historyRef.current = [...historyRef.current.slice(-49), prevSong.id];
+    startPlayback(s);
+  };
+
+  // A song finished on its own.
+  const onEnded = useRef(() => {});
+  onEnded.current = () => {
+    if (modeRef.current.loop) {
+      // The player loops by itself; if a platform still reports the end, just keep going.
+      try { ref.current?.seekTo(0); ref.current?.play(); } catch {}
+      setPlaying(true);
+      return;
+    }
+    if (modeRef.current.autoplay) {
+      const n = pickNext(false);
+      if (n) { play(n); return; }
+    }
+    setPlaying(false);
+  };
+
+  const next = () => {
+    const n = pickNext(true);
+    if (n) play(n);
+  };
+
+  const prev = () => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    if (progress.position > 3) { seekTo(0); return; } // like most players: first tap restarts the song
+    const id = historyRef.current[historyRef.current.length - 1];
+    const back = id ? queueRef.current.find((x) => x.id === id) : undefined;
+    if (back) {
+      historyRef.current = historyRef.current.slice(0, -1);
+      startPlayback(back);
+      return;
+    }
+    const q = queueRef.current;
+    const i = q.findIndex((x) => x.id === cur.id);
+    if (i > 0) startPlayback(q[i - 1]);
+    else seekTo(0);
+  };
+
   const toggle = () => {
     const p = ref.current;
     if (!p) return;
@@ -89,12 +196,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else { if (p.duration > 0 && p.currentTime >= p.duration) p.seekTo(0); p.play(); setPlaying(true); }
   };
 
+  const setMode = (patch: Partial<PlayMode>) => {
+    const m = { ...modeRef.current, ...patch };
+    modeRef.current = m;
+    setModeState(m);
+    if (ref.current) ref.current.loop = m.loop;
+    AsyncStorage.setItem(MODE_KEY, JSON.stringify(m)).catch(() => {});
+  };
+
   const setRate = (value: number, save = true) => {
-    const next = clampRate(value);
-    rateRef.current = next;
-    setRateState(next);
-    try { ref.current?.setPlaybackRate(next, 'high'); } catch {}
-    if (save) AsyncStorage.setItem(RATE_KEY, String(next)).catch(() => {});
+    const nextRate = clampRate(value);
+    rateRef.current = nextRate;
+    setRateState(nextRate);
+    try { ref.current?.setPlaybackRate(nextRate, 'high'); } catch {}
+    if (save) AsyncStorage.setItem(RATE_KEY, String(nextRate)).catch(() => {});
   };
 
   const seekTo = (seconds: number) => {
@@ -106,15 +221,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     p.seekTo(to).catch(() => {});
   };
 
-  // Stop and clear the player if the given sound is the one loaded (e.g. it was just deleted).
+  // A song was deleted: drop it from the queue, and stop the player if it is the one loaded.
   const stopIf = (id: string) => {
-    if (current?.id !== id) return;
+    setQueue(queueRef.current.filter((x) => x.id !== id));
+    historyRef.current = historyRef.current.filter((x) => x !== id);
+    if (currentRef.current?.id !== id) return;
     try { ref.current?.remove(); } catch {}
     ref.current = null;
+    currentRef.current = null;
     setCurrent(null);
     setPlaying(false);
     setProgress({ position: 0, duration: 0 });
   };
 
-  return <PlayerCtx.Provider value={{ current, playing, rate, setRate, play, toggle, stopIf, seekTo }}>{children}</PlayerCtx.Provider>;
+  return (
+    <PlayerCtx.Provider value={{ current, playing, rate, mode, canSkip: queueLen > 1, setRate, setMode, play, toggle, next, prev, stopIf, seekTo }}>
+      {children}
+    </PlayerCtx.Provider>
+  );
 }

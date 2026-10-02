@@ -16,7 +16,8 @@ import { BRAND_TINT } from './tints';
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-export function SoundRow({ sound }: { sound: Sound }) {
+// `queue` is the list this row belongs to: autoplay / next / shuffle move through it.
+export function SoundRow({ sound, queue }: { sound: Sound; queue?: Sound[] }) {
   const t = useTheme();
   const s = useMemo(() => makeStyles(t), [t]);
   const { play, current, playing, stopIf } = usePlayer();
@@ -50,7 +51,7 @@ export function SoundRow({ sound }: { sound: Sound }) {
       <ConfirmDialog visible={confirming} title="Remove sound" message={`Remove "${sound.title}" from My Sounds?`} onConfirm={doRemove} onCancel={() => setConfirming(false)} />
       <Glass blur={false} style={isCurrent ? s.on : undefined}>
         <View style={s.row}>
-          <Pressable onPress={() => play(sound)} style={({ pressed }) => [s.main, pressed && s.pressed]}>
+          <Pressable onPress={() => play(sound, queue)} style={({ pressed }) => [s.main, pressed && s.pressed]}>
             <SoundArt sound={sound} size={48} radius={16} style={s.thumb} />
             <View style={{ flex: 1 }}>
               <Text style={s.title} numberOfLines={1}>{sound.title}</Text>
@@ -66,7 +67,7 @@ export function SoundRow({ sound }: { sound: Sound }) {
               <Ionicons name={faved ? 'heart' : 'heart-outline'} size={19} color={faved ? t.danger : t.btnText} />
             </LiquidButton>
           )}
-          <LiquidButton compact hitSlop={6} tint={BRAND_TINT} style={s.play} onPress={() => play(sound)} accessibilityRole="button" accessibilityLabel={active ? 'Pause' : 'Play'}>
+          <LiquidButton compact hitSlop={6} tint={BRAND_TINT} style={s.play} onPress={() => play(sound, queue)} accessibilityRole="button" accessibilityLabel={active ? 'Pause' : 'Play'}>
             <Ionicons name={active ? 'pause' : 'play'} size={16} color="#fff" style={{ marginLeft: active ? 0 : 2 }} />
           </LiquidButton>
         </View>

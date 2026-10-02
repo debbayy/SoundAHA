@@ -38,7 +38,7 @@ export default function Search() {
       <FlatList
         data={list}
         keyExtractor={(x) => x.id}
-        renderItem={({ item }) => <SoundRow sound={item} />}
+        renderItem={({ item }) => <SoundRow sound={item} queue={list} />}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: bottom }}

@@ -49,7 +49,7 @@ export default function Home() {
       <FlatList
         data={list}
         keyExtractor={(x) => x.id}
-        renderItem={({ item }) => <SoundRow sound={item} />}
+        renderItem={({ item }) => <SoundRow sound={item} queue={list} />}
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: bottom }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -73,7 +73,7 @@ export default function Home() {
             {hero && (
               <PressableScale
                 scaleTo={0.97}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); play(hero); }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); play(hero, sounds); }}
               >
                 <LinearGradient colors={['#7C5CFF', '#4A35D6', '#00B8D9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
                   <LinearGradient

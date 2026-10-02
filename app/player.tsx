@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Palette, space, useTheme } from '../src/theme';
-import { usePlayer, useProgress } from '../src/context/PlayerContext';
+import { usePlayer } from '../src/context/PlayerContext';
 import { Backdrop } from '../src/components/Backdrop';
 import { LiquidButton } from '../src/components/LiquidButton';
 import { SeekBar } from '../src/components/SeekBar';
@@ -15,6 +15,7 @@ import { coverOf } from '../src/components/SoundArt';
 import { BRAND_TINT } from '../src/components/tints';
 
 const CATEGORY: Record<string, string> = { meme: 'Meme', music: 'Music', trending: 'Trending', local: 'My Sounds' };
+const tick = () => Haptics.selectionAsync().catch(() => {});
 
 // Full-screen player: spinning record with the cover art, title / artist, timeline and controls.
 export default function Player() {
@@ -22,8 +23,7 @@ export default function Player() {
   const s = useMemo(() => makeStyles(t), [t]);
   const router = useRouter();
   const { width, height } = useWindowDimensions();
-  const { current, playing, toggle, rate, setRate, seekTo } = usePlayer();
-  const { position } = useProgress();
+  const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev } = usePlayer();
   const [speedOpen, setSpeedOpen] = useState(false);
 
   // Nothing loaded (e.g. the song was just deleted): there is nothing to show.
@@ -33,8 +33,9 @@ export default function Player() {
   if (!current) return null;
 
   const cover = coverOf(current);
-  const disc = Math.min(width - 56, height * 0.4, 360);
+  const disc = Math.min(width - 56, height * 0.38, 340);
   const artist = current.artist || CATEGORY[current.category] || 'Soundly';
+  const on = (active: boolean) => (active ? '#fff' : t.btnText);
 
   return (
     <Backdrop>
@@ -70,18 +71,59 @@ export default function Player() {
         </View>
 
         <View style={s.controls}>
-          <LiquidButton compact hitSlop={8} style={s.skip} onPress={() => { Haptics.selectionAsync().catch(() => { }); seekTo(Math.max(0, position - 10)); }} accessibilityRole="button" accessibilityLabel="Back 10 seconds">
-            <Ionicons name="play-back" size={20} color={t.btnText} />
-            <Text style={[s.skipText, { color: t.btnText }]}></Text>
+          <LiquidButton
+            compact
+            hitSlop={8}
+            tint={mode.shuffle ? BRAND_TINT : undefined}
+            style={s.small}
+            onPress={() => { tick(); setMode({ shuffle: !mode.shuffle }); }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: mode.shuffle }}
+            accessibilityLabel={mode.shuffle ? 'Shuffle on' : 'Shuffle off'}
+          >
+            <Ionicons name="shuffle" size={20} color={on(mode.shuffle)} />
           </LiquidButton>
-          <LiquidButton tint={BRAND_TINT} style={s.play} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { }); toggle(); }} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
-            <Ionicons name={playing ? 'pause' : 'play'} size={34} color="#fff" style={{ marginLeft: playing ? 0 : 4 }} />
+
+          <LiquidButton compact hitSlop={8} style={s.skip} onPress={() => { tick(); prev(); }} accessibilityRole="button" accessibilityLabel="Previous song">
+            <Ionicons name="play-skip-back" size={22} color={t.btnText} />
           </LiquidButton>
-          <LiquidButton compact hitSlop={8} style={s.skip} onPress={() => { Haptics.selectionAsync().catch(() => { }); seekTo(position + 10); }} accessibilityRole="button" accessibilityLabel="Forward 10 seconds">
-            <Text style={[s.skipText, { color: t.btnText }]}></Text>
-            <Ionicons name="play-forward" size={20} color={t.btnText} />
+
+          <LiquidButton tint={BRAND_TINT} style={s.play} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); toggle(); }} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
+            <Ionicons name={playing ? 'pause' : 'play'} size={32} color="#fff" style={{ marginLeft: playing ? 0 : 4 }} />
+          </LiquidButton>
+
+          <LiquidButton compact hitSlop={8} disabled={!canSkip} style={s.skip} onPress={() => { tick(); next(); }} accessibilityRole="button" accessibilityLabel="Next song">
+            <Ionicons name="play-skip-forward" size={22} color={t.btnText} />
+          </LiquidButton>
+
+          <LiquidButton
+            compact
+            hitSlop={8}
+            tint={mode.loop ? BRAND_TINT : undefined}
+            style={s.small}
+            onPress={() => { tick(); setMode({ loop: !mode.loop }); }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: mode.loop }}
+            accessibilityLabel={mode.loop ? 'Loop this song: on' : 'Loop this song: off'}
+          >
+            <Ionicons name="repeat" size={20} color={on(mode.loop)} />
+            {mode.loop && <Text style={s.one}>1</Text>}
           </LiquidButton>
         </View>
+
+        <LiquidButton
+          compact
+          tint={mode.autoplay ? BRAND_TINT : undefined}
+          wrapStyle={s.autoWrap}
+          style={s.auto}
+          onPress={() => { tick(); setMode({ autoplay: !mode.autoplay }); }}
+          accessibilityRole="button"
+          accessibilityState={{ selected: mode.autoplay }}
+          accessibilityLabel={mode.autoplay ? 'Autoplay on' : 'Autoplay off'}
+        >
+          <Ionicons name="infinite" size={18} color={on(mode.autoplay)} />
+          <Text style={[s.autoText, { color: on(mode.autoplay) }]}>{mode.autoplay ? 'Autoplay on' : 'Autoplay off'}</Text>
+        </LiquidButton>
       </SafeAreaView>
 
       <SpeedDialog visible={speedOpen} rate={rate} onChange={(r) => setRate(r, false)} onCommit={(r) => setRate(r, true)} onClose={() => setSpeedOpen(false)} />
@@ -102,9 +144,13 @@ const makeStyles = (t: Palette) =>
     title: { fontSize: 26, fontWeight: '800', color: t.text, textAlign: 'center', letterSpacing: -0.5 },
     artist: { fontSize: 16, fontWeight: '600', color: t.accent2, marginTop: 4, textAlign: 'center' },
     album: { fontSize: 13, color: t.muted, marginTop: 2, textAlign: 'center' },
-    seek: { marginBottom: space.md },
-    controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xl },
-    skip: { width: 62, height: 62, flexDirection: 'row', gap: 2 },
-    skipText: { fontSize: 12, fontWeight: '700' },
-    play: { width: 84, height: 84 },
+    seek: { marginBottom: space.sm },
+    controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    small: { width: 44, height: 44 },
+    skip: { width: 52, height: 52 },
+    play: { width: 76, height: 76 },
+    one: { position: 'absolute', fontSize: 8, fontWeight: '800', color: '#fff', top: 15 },
+    autoWrap: { alignSelf: 'center', marginTop: space.lg },
+    auto: { height: 40, paddingHorizontal: 18, flexDirection: 'row', gap: 8 },
+    autoText: { fontSize: 13, fontWeight: '700' },
   });
