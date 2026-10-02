@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLocalSounds } from '../context/LocalSoundsContext';
 import { Glass } from './Glass';
 import { ConfirmDialog } from './ConfirmDialog';
+import { MiniPlayer } from './MiniPlayer';
 import { SoundArt } from './SoundArt';
 import { LiquidButton } from './LiquidButton';
 import { BRAND_TINT } from './tints';
@@ -43,6 +44,9 @@ export function SoundRow({ sound, queue }: { sound: Sound; queue?: Sound[] }) {
     stopIf(sound.id);
     removeSound(sound.id);
   };
+
+  // The playing song's row turns into the player card, in the same spot of the list.
+  if (isCurrent) return <MiniPlayer inline />;
 
   // No Pressable nests inside another: the song area, the heart/trash and the play button are
   // separate siblings, so taps (especially the trash) are never swallowed by the card.

@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Palette, TAB_BAR_HEIGHT, useTheme } from '../theme';
 import { Glass } from './Glass';
-import { MiniPlayer } from './MiniPlayer';
+import { usePlayer } from '../context/PlayerContext';
+import { useHasInlinePlayer } from './MiniPlayer';
+import { PlayerPeek } from './PlayerPeek';
 
 const ICONS: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
   index: ['home', 'home-outline'],
@@ -19,6 +22,8 @@ const PAD = 6;
 export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const t = useTheme();
+  const hasInlinePlayer = useHasInlinePlayer();
+  const { current } = usePlayer();
   const s = useMemo(() => makeStyles(t), [t]);
   const [w, setW] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
@@ -33,7 +38,10 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
 
   return (
     <View pointerEvents="box-none" style={[s.dock, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-      <MiniPlayer />
+      {/* soft edge: the list fades out just before the bar instead of being cut off */}
+      <LinearGradient pointerEvents="none" colors={[t.bgFade0, t.bgFade1]} style={s.fade} />
+      {/* the player card normally sits in the list as the playing song's row; this is the fallback */}
+      {!hasInlinePlayer && current && <PlayerPeek />}
       <Glass radius={TAB_BAR_HEIGHT / 2} intensity={55} style={s.bar}>
         <View style={s.inner} onLayout={onLayout}>
           {itemW > 0 && (
@@ -63,7 +71,10 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
 }
 
 const makeStyles = (t: Palette) => StyleSheet.create({
-  dock: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16 },
+  // In the normal layout flow (not absolute): the screen above ends where this starts, so lists never
+  // slide underneath the bar.
+  dock: { paddingHorizontal: 16, paddingTop: 8 },
+  fade: { position: 'absolute', left: 0, right: 0, top: -30, height: 38 },
   bar: { height: TAB_BAR_HEIGHT },
   inner: { flex: 1, flexDirection: 'row', padding: PAD },
   item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },

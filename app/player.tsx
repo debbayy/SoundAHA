@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -26,6 +26,22 @@ export default function Player() {
   const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev } = usePlayer();
   const [speedOpen, setSpeedOpen] = useState(false);
 
+  // Swipe down anywhere on the screen to close it. The timeline / speed slider claim their own
+  // touches first, so dragging those never closes the player.
+  const close = useRef(() => {});
+  close.current = () => router.back();
+  const swipe = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 12 && g.dy > Math.abs(g.dx) * 1.6,
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80 || g.vy > 0.7) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          close.current();
+        }
+      },
+    })
+  ).current;
+
   // Nothing loaded (e.g. the song was just deleted): there is nothing to show.
   useEffect(() => {
     if (!current) router.back();
@@ -45,7 +61,7 @@ export default function Player() {
           <View style={[StyleSheet.absoluteFill, { backgroundColor: t.isDark ? 'rgba(5,5,12,0.62)' : 'rgba(238,240,251,0.7)' }]} />
         </>
       )}
-      <SafeAreaView style={s.screen}>
+      <SafeAreaView style={s.screen} {...swipe.panHandlers}>
         <View style={s.top}>
           <LiquidButton compact hitSlop={10} style={s.round} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Close player">
             <Ionicons name="chevron-down" size={24} color={t.btnText} />

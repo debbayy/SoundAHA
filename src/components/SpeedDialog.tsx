@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, Modal, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { GRADIENT, Palette, space, useTheme } from '../theme';
 import { MAX_RATE, MIN_RATE, RATE_STEP } from '../context/PlayerContext';
-import { Glass } from './Glass';
+import { DialogFrame } from './DialogFrame';
 
 type Props = {
   visible: boolean;
@@ -90,10 +90,7 @@ export function SpeedDialog({ visible, rate, onChange, onCommit, onClose }: Prop
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={s.scrim} onPress={onClose}>
-        <Pressable style={s.cardWrap} onPress={() => { }}>
-          <Glass radius={28} style={{ alignSelf: 'stretch' }}>
+    <DialogFrame visible={visible} onClose={onClose}>
             <View style={s.card}>
               <Text style={s.title}>Playback speed</Text>
               <View
@@ -126,17 +123,12 @@ export function SpeedDialog({ visible, rate, onChange, onCommit, onClose }: Prop
                 <Text style={s.resetText}>Reset to Normal</Text>
               </Pressable>
             </View>
-          </Glass>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </DialogFrame>
   );
 }
 
 const makeStyles = (t: Palette) =>
   StyleSheet.create({
-    scrim: { flex: 1, backgroundColor: t.isDark ? 'rgba(0,0,0,0.55)' : 'rgba(20,20,50,0.35)', alignItems: 'center', justifyContent: 'center', padding: space.xl },
-    cardWrap: { alignSelf: 'stretch', maxWidth: 420 },
     card: { paddingVertical: space.lg, paddingHorizontal: space.xl },
     title: { fontSize: 14, fontWeight: '700', color: t.muted, textAlign: 'center', letterSpacing: 1.2, textTransform: 'uppercase' },
     value: { fontSize: 44, fontWeight: '800', color: t.text, textAlign: 'center', marginTop: space.sm, letterSpacing: -1 },

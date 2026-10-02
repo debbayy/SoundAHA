@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Palette, space, useTheme } from '../../src/theme';
 import { SoundRow } from '../../src/components/SoundRow';
+import { ConfirmDialog } from '../../src/components/ConfirmDialog';
 import { LiquidButton } from '../../src/components/LiquidButton';
 import { BRAND_TINT } from '../../src/components/tints';
 import { PressableScale } from '../../src/components/PressableScale';
@@ -31,21 +32,38 @@ export default function Home() {
   const { play } = usePlayer();
   const bottom = useBottomSpace();
   const [cat, setCat] = useState('all');
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const sounds = [...localSounds, ...remote];
   const list = cat === 'all' ? sounds : sounds.filter((x) => x.category === cat);
   const hero = remote.find((x) => x.category === 'trending') ?? remote[0];
 
   const onImport = async () => {
     try {
-      const n = await importSounds();
-      if (n) setCat('local');
+      const { added, skipped, skippedTitles } = await importSounds();
+      if (added) setCat('local');
+      if (skipped) {
+        const names = skippedTitles.slice(0, 3).map((n) => `"${n}"`).join(', ') + (skipped > 3 ? ` and ${skipped - 3} more` : '');
+        setNotice({
+          title: skipped === 1 ? "Can't add this song" : "Can't add these songs",
+          message: `${names} ${skipped === 1 ? 'is' : 'are'} already in your library. Each title can only be added once.`,
+        });
+      }
     } catch {
-      Alert.alert('Import failed', 'Could not read that file. Try another audio file.');
+      setNotice({ title: 'Import failed', message: 'Could not read that file. Try another audio file.' });
     }
   };
 
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
+      <ConfirmDialog
+        visible={!!notice}
+        title={notice?.title ?? ''}
+        message={notice?.message ?? ''}
+        confirmLabel="OK"
+        hideCancel
+        onConfirm={() => setNotice(null)}
+        onCancel={() => setNotice(null)}
+      />
       <FlatList
         data={list}
         keyExtractor={(x) => x.id}

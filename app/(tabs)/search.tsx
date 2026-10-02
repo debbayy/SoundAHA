@@ -6,15 +6,19 @@ import { Palette, space, useTheme } from '../../src/theme';
 import { SoundRow } from '../../src/components/SoundRow';
 import { Glass } from '../../src/components/Glass';
 import { useSounds } from '../../src/data/useSounds';
+import { useLocalSounds } from '../../src/context/LocalSoundsContext';
 import { useBottomSpace } from '../../src/lib/useBottomSpace';
 
 export default function Search() {
   const t = useTheme();
   const s = useMemo(() => makeStyles(t), [t]);
-  const sounds = useSounds();
+  const remote = useSounds();
+  const { localSounds } = useLocalSounds();
+  const sounds = [...localSounds, ...remote]; // My Sounds are searchable too
   const bottom = useBottomSpace();
   const [q, setQ] = useState('');
-  const list = sounds.filter((x) => x.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const needle = q.trim().toLowerCase();
+  const list = needle ? sounds.filter((x) => [x.title, x.artist, x.album].some((v) => v?.toLowerCase().includes(needle))) : sounds;
 
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
@@ -24,7 +28,7 @@ export default function Search() {
           <Ionicons name="search" size={18} color={t.muted} />
           <TextInput
             style={s.input}
-            placeholder="Search sounds..."
+            placeholder="Search title or artist..."
             placeholderTextColor={t.muted}
             value={q}
             onChangeText={setQ}

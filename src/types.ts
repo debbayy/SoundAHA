@@ -9,6 +9,7 @@ export type Sound = {
   artist?: string; // from the file's tags (imported songs)
   album?: string;
   cover_url?: string; // cover art extracted from the file's tags
+  fingerprint?: string; // identity of the file's contents, used to refuse importing the same song twice
   meta_checked?: boolean; // tags were already read for this imported file
   emoji?: string;
   duration: number; // seconds

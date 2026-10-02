@@ -5,17 +5,22 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Sound } from '../types';
 import { readLocalMeta } from '../lib/readMeta';
+import { fingerprintFile } from '../lib/fingerprint';
 
 const KEY = 'soundly.localSounds';
 const isNative = Platform.OS !== 'web';
 
 type Ctx = {
   localSounds: Sound[];
-  importSounds: () => Promise<number>; // returns how many files were added
+  importSounds: () => Promise<{ added: number; skipped: number; skippedTitles: string[] }>; // skipped = songs already in the library
   removeSound: (id: string) => void;
 };
-const LocalCtx = createContext<Ctx>({ localSounds: [], importSounds: async () => 0, removeSound: () => {} });
+const LocalCtx = createContext<Ctx>({ localSounds: [], importSounds: async () => ({ added: 0, skipped: 0, skippedTitles: [] }), removeSound: () => {} });
 export const useLocalSounds = () => useContext(LocalCtx);
+
+// Two songs count as the same title when they match ignoring case, spacing and a trailing "(1)"
+// (what Android adds to a re-downloaded file). The library keeps one entry per title.
+const normTitle = (s: string) => s.toLowerCase().replace(/s*(d+)s*$/, '').replace(/s+/g, ' ').trim();
 
 const titleOf = (name: string) => name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Untitled';
 
@@ -41,10 +46,18 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
         // Songs imported before tag reading existed: read their tags once now.
         let changed = false;
         const next = list.map((x) => {
-          if (!x.local || x.meta_checked) return x;
-          changed = true;
-          const m = readLocalMeta(x.audio_url, x.id);
-          return { ...x, title: m.title || x.title, artist: m.artist, album: m.album, cover_url: m.cover_url, meta_checked: true };
+          if (!x.local) return x;
+          let y = x;
+          if (!y.meta_checked) {
+            changed = true;
+            const m = readLocalMeta(y.audio_url, y.id);
+            y = { ...y, title: m.title || y.title, artist: m.artist, album: m.album, cover_url: m.cover_url, meta_checked: true };
+          }
+          if (!y.fingerprint) {
+            const fp = fingerprintFile(y.audio_url);
+            if (fp) { changed = true; y = { ...y, fingerprint: fp }; }
+          }
+          return y;
         });
         setLocalSounds(next);
         if (changed) AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
@@ -59,20 +72,38 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
 
   const importSounds = useCallback(async () => {
     const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true, copyToCacheDirectory: true });
-    if (res.canceled || !res.assets?.length) return 0;
+    if (res.canceled || !res.assets?.length) return { added: 0, skipped: 0, skippedTitles: [] };
     const added: Sound[] = [];
+    const skippedTitles: string[] = [];
+    const seen = new Set(localSounds.map((x) => x.fingerprint).filter(Boolean) as string[]);
+    const seenTitles = new Set(localSounds.map((x) => normTitle(x.title)));
     for (const a of res.assets) {
+      const fingerprint = isNative ? fingerprintFile(a.uri) : null;
+      if (fingerprint && seen.has(fingerprint)) { skippedTitles.push(titleOf(a.name)); continue; } // same song already imported
+      if (fingerprint) seen.add(fingerprint);
       const id = `local-${Date.now()}-${added.length}`;
       try {
         const uri = isNative ? copyIntoApp(a.uri, id, a.name) : a.uri;
         const m = isNative ? readLocalMeta(uri, id) : {};
+        const title = m.title || titleOf(a.name);
+        if (seenTitles.has(normTitle(title))) {
+          // a song with this title is already in the library: undo the copy and skip it
+          if (isNative) {
+            try { new File(uri).delete(); } catch { /* ignore */ }
+            if (m.cover_url) { try { new File(m.cover_url).delete(); } catch { /* ignore */ } }
+          }
+          skippedTitles.push(title);
+          continue;
+        }
+        seenTitles.add(normTitle(title));
         added.push({
           id,
-          title: m.title || titleOf(a.name),
+          title,
           artist: m.artist,
           album: m.album,
           cover_url: m.cover_url,
           meta_checked: true,
+          fingerprint: fingerprint ?? undefined,
           category: 'local',
           emoji: '📱',
           duration: 0,
@@ -84,7 +115,7 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
       }
     }
     if (added.length) persist([...added, ...localSounds]);
-    return added.length;
+    return { added: added.length, skipped: skippedTitles.length, skippedTitles };
   }, [localSounds]);
 
   const removeSound = useCallback((id: string) => {

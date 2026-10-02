@@ -1,10 +1,5 @@
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MINI_PLAYER_HEIGHT, TAB_BAR_HEIGHT } from '../theme';
-import { usePlayer } from '../context/PlayerContext';
-
-// Bottom padding a scrollable screen needs so its last row clears the floating tab bar (+ mini player).
+// Bottom padding at the end of a scrollable list. The tab bar sits below the screen content (it no
+// longer floats over it), so the list simply stops above the bar and only needs a little breathing room.
 export function useBottomSpace() {
-  const { bottom } = useSafeAreaInsets();
-  const { current } = usePlayer();
-  return Math.max(bottom, 10) + TAB_BAR_HEIGHT + 20 + (current ? MINI_PLAYER_HEIGHT + 10 : 0);
+  return 24;
 }

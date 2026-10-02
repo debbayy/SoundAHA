@@ -11,16 +11,18 @@ type Props = {
   intensity?: number;
   // Real backdrop blur is costly on Android; turn it off for repeated items (list rows).
   blur?: boolean;
+  // Firm surface for popups: nearly opaque, so what is behind does not show through the text.
+  opaque?: boolean;
 };
 
 // Liquid-glass surface: raised (soft outer shadow), a lit inner rim, a soft top sheen and one thin
 // specular line along the top edge. No true refraction in plain React Native, so it is built from
 // layered shadows/gradients; kept deliberately minimal so it stays tidy.
-export function Glass({ children, style, radius = 22, intensity = 40, blur = true }: Props) {
+export function Glass({ children, style, radius = 22, intensity = 40, blur = true, opaque = false }: Props) {
   const t = useTheme();
   // Android's blur renders washed-out/whitish, so there the glass is a tinted layer instead.
   const realBlur = blur && Platform.OS === 'ios';
-  const fill = realBlur ? t.glassBlur : blur ? t.glassSolid : t.glassRow;
+  const fill = opaque ? t.glassModal : realBlur ? t.glassBlur : blur ? t.glassSolid : t.glassRow;
   // Repeated list rows skip the outer shadow and the specular line.
   const boxShadow = blur ? `${t.dropShadow}, ${t.dropRim}` : t.dropRim;
   const inset = Math.min(radius, 28) * 0.8;

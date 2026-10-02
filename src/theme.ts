@@ -16,6 +16,9 @@ const dark = {
   // glass surfaces
   glassBlur: 'rgba(28,28,48,0.42)', // over a real blur (iOS)
   glassSolid: 'rgba(20,20,38,0.82)', // blur-less stand-in (Android, floating bars)
+  glassModal: 'rgba(18,18,34,0.96)', // popups: firm, so text on them stays readable
+  bgFade0: 'rgba(5,5,12,0)', // soft edge over the end of a list, just above the tab bar
+  bgFade1: 'rgba(5,5,12,0.92)',
   glassRow: 'rgba(34,34,60,0.55)', // list rows / chips
   glassStroke: 'rgba(255,255,255,0.12)',
   sheen: ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)'] as const,
@@ -60,6 +63,9 @@ const light: Palette = {
   blurTint: 'light',
   glassBlur: 'rgba(255,255,255,0.45)',
   glassSolid: 'rgba(255,255,255,0.80)',
+  glassModal: 'rgba(250,250,255,0.97)',
+  bgFade0: 'rgba(238,240,251,0)',
+  bgFade1: 'rgba(238,240,251,0.92)',
   glassRow: 'rgba(255,255,255,0.62)',
   glassStroke: 'rgba(255,255,255,0.95)',
   sheen: ['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.05)'],

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { MINI_PLAYER_HEIGHT, Palette, useTheme } from '../theme';
 import { usePlayer } from '../context/PlayerContext';
@@ -12,7 +13,17 @@ import { SoundArt } from './SoundArt';
 import { SpeedDialog } from './SpeedDialog';
 import { BRAND_TINT } from './tints';
 
-export function MiniPlayer() {
+// The player card lives inside the list, as the playing song's own row. When no such row is on
+// screen (other tabs, a filtered list, the song scrolled away) the tab bar shows a slim PlayerPeek
+// instead, which opens the full player with a swipe up.
+let inlineCount = 0;
+const inlineSubs = new Set<() => void>();
+const bumpInline = (d: number) => { inlineCount += d; inlineSubs.forEach((f) => f()); };
+const subscribeInline = (f: () => void) => { inlineSubs.add(f); return () => { inlineSubs.delete(f); }; };
+export const useHasInlinePlayer = () => useSyncExternalStore(subscribeInline, () => inlineCount > 0);
+
+
+export function MiniPlayer({ inline = false }: { inline?: boolean }) {
   const t = useTheme();
   const s = useMemo(() => makeStyles(t), [t]);
   const { current, playing, toggle, rate, setRate } = usePlayer();
@@ -20,6 +31,13 @@ export function MiniPlayer() {
   const router = useRouter();
   const shown = useRef(new Animated.Value(0)).current;
   const has = !!current;
+  const focused = useIsFocused(); // a screen kept alive in the background must not count as showing the card
+
+  useLayoutEffect(() => {
+    if (!inline || !focused || !has) return;
+    bumpInline(1);
+    return () => bumpInline(-1);
+  }, [inline, focused, has]);
 
   useEffect(() => {
     Animated.spring(shown, { toValue: has ? 1 : 0, useNativeDriver: true, damping: 16, stiffness: 180 }).start();
@@ -29,9 +47,9 @@ export function MiniPlayer() {
   return (
     <Animated.View
       style={{
-        marginBottom: 8,
+        marginBottom: inline ? 10 : 8,
         opacity: shown,
-        transform: [{ translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }, { scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }],
+        transform: [{ translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [inline ? 8 : 24, 0] }) }, { scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }],
       }}
     >
       <Glass radius={26} intensity={60} style={s.wrap}>
