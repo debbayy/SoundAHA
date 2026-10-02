@@ -5,7 +5,7 @@
     "scheme": "soundly",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "backgroundColor": "#07070F",
     "splash": {

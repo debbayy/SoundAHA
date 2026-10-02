@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
-import { theme } from '../theme';
+import { useTheme } from '../theme';
 
 export function Equalizer({ active }: { active: boolean }) {
+  const t = useTheme();
   const bars = useRef([0, 1, 2, 3].map(() => new Animated.Value(0.3))).current;
   useEffect(() => {
     const loops = bars.map((v, i) =>
@@ -20,7 +21,7 @@ export function Equalizer({ active }: { active: boolean }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, height: 22, marginRight: 14 }}>
       {bars.map((v, i) => (
-        <Animated.View key={i} style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: theme.accent2, transform: [{ scaleY: v }] }} />
+        <Animated.View key={i} style={{ width: 3, height: 22, borderRadius: 2, backgroundColor: t.accent2, transform: [{ scaleY: v }] }} />
       ))}
     </View>
   );

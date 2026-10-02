@@ -1,13 +1,19 @@
-import { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Alert, FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { GRADIENT, theme } from '../../src/theme';
+import * as Haptics from 'expo-haptics';
+import { Palette, space, useTheme } from '../../src/theme';
 import { SoundRow } from '../../src/components/SoundRow';
+import { LiquidButton } from '../../src/components/LiquidButton';
+import { BRAND_TINT } from '../../src/components/tints';
+import { PressableScale } from '../../src/components/PressableScale';
+import { ThemeToggle } from '../../src/components/ThemeToggle';
 import { useSounds } from '../../src/data/useSounds';
 import { usePlayer } from '../../src/context/PlayerContext';
 import { useLocalSounds } from '../../src/context/LocalSoundsContext';
+import { useBottomSpace } from '../../src/lib/useBottomSpace';
 
 const CATS = [
   { key: 'all', label: 'All' },
@@ -18,9 +24,12 @@ const CATS = [
 ];
 
 export default function Home() {
+  const t = useTheme();
+  const s = useMemo(() => makeStyles(t), [t]);
   const remote = useSounds();
   const { localSounds, importSounds } = useLocalSounds();
   const { play } = usePlayer();
+  const bottom = useBottomSpace();
   const [cat, setCat] = useState('all');
   const sounds = [...localSounds, ...remote];
   const list = cat === 'all' ? sounds : sounds.filter((x) => x.category === cat);
@@ -41,55 +50,69 @@ export default function Home() {
         data={list}
         keyExtractor={(x) => x.id}
         renderItem={({ item }) => <SoundRow sound={item} />}
-        contentContainerStyle={{ padding: 20, paddingBottom: 30 }}
+        contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: bottom }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <Text style={s.empty}>{cat === 'local' ? 'No imported sounds yet. Tap the + button to pick audio from your phone.' : 'No sounds'}</Text>
         }
         ListHeaderComponent={
-          <View style={{ marginBottom: 12 }}>
+          <View>
             <View style={s.top}>
               <View>
-                <Text style={s.h1}>Soundly<Text style={{ color: theme.accent2 }}>.</Text></Text>
+                <Text style={s.h1}>Soundly<Text style={{ color: t.accent2 }}>.</Text></Text>
                 <Text style={s.sub}>Sounds for every moment</Text>
               </View>
-              <Pressable onPress={onImport} accessibilityLabel="Import audio from phone">
-                <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badge}>
-                  <Ionicons name="add" size={24} color="#fff" />
-                </LinearGradient>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <ThemeToggle />
+              <LiquidButton compact style={s.badge} onPress={onImport} accessibilityRole="button" accessibilityLabel="Import audio from phone">
+                <Ionicons name="add" size={26} color={t.btnText} />
+              </LiquidButton>
+              </View>
             </View>
 
             {hero && (
-              <Pressable onPress={() => play(hero)}>
-                <LinearGradient colors={['#7C5CFF', '#3B2BCC', '#00B8D9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
+              <PressableScale
+                scaleTo={0.97}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); play(hero); }}
+              >
+                <LinearGradient colors={['#7C5CFF', '#4A35D6', '#00B8D9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.7, y: 0.7 }}
+                    style={StyleSheet.absoluteFill}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={s.heroTag}>TRENDING NOW</Text>
                     <Text style={s.heroTitle} numberOfLines={1}>{hero.title}</Text>
                     <Text style={s.heroSub}>Tap to play instantly</Text>
                   </View>
-                  <Text style={{ fontSize: 44, marginRight: 14 }}>{hero.emoji ?? '🔥'}</Text>
-                  <View style={s.heroBtn}><Ionicons name="play" size={22} color={theme.accent} style={{ marginLeft: 2 }} /></View>
+                  <Text style={{ fontSize: 44, marginRight: space.md }}>{hero.emoji ?? '🔥'}</Text>
+                  <View style={s.heroBtn}><Ionicons name="play" size={22} color={t.accent} style={{ marginLeft: 2 }} /></View>
                 </LinearGradient>
-              </Pressable>
+              </PressableScale>
             )}
 
-            <View style={s.chips}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll} contentContainerStyle={s.chips}>
               {CATS.map((c) => {
                 const on = cat === c.key;
                 return (
-                  <Pressable key={c.key} onPress={() => setCat(c.key)}>
-                    {on ? (
-                      <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.chip}>
-                        <Text style={[s.chipText, { color: '#fff' }]}>{c.label}</Text>
-                      </LinearGradient>
-                    ) : (
-                      <View style={[s.chip, s.chipOff]}><Text style={s.chipText}>{c.label}</Text></View>
-                    )}
-                  </Pressable>
+                  <LiquidButton
+                    key={c.key}
+                    compact
+                    scaleTo={0.94}
+                    tint={on ? BRAND_TINT : undefined}
+                    label={c.label}
+                    labelStyle={s.chipText}
+                    style={s.chip}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    onPress={() => { if (!on) Haptics.selectionAsync().catch(() => {}); setCat(c.key); }}
+                  />
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
         }
       />
@@ -97,20 +120,20 @@ export default function Home() {
   );
 }
 
-const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.bg },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  h1: { fontSize: 32, fontWeight: '800', color: theme.text, letterSpacing: -0.5 },
-  sub: { color: theme.muted, marginTop: 2 },
-  badge: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  empty: { color: theme.muted, textAlign: 'center', marginTop: 40 },
-  hero: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 26 },
+const makeStyles = (t: Palette) => StyleSheet.create({
+  screen: { flex: 1 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.lg },
+  h1: { fontSize: 34, fontWeight: '800', color: t.text, letterSpacing: -0.8 },
+  sub: { color: t.muted, marginTop: 2, fontSize: 14 },
+  badge: { width: 48, height: 48 },
+  empty: { color: t.muted, textAlign: 'center', marginTop: 40 },
+  hero: { flexDirection: 'row', alignItems: 'center', padding: space.lg, borderRadius: 28, overflow: 'hidden' },
   heroTag: { color: 'rgba(255,255,255,0.75)', fontSize: 11, letterSpacing: 2, fontWeight: '700' },
   heroTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 6 },
-  heroSub: { color: 'rgba(255,255,255,0.7)', marginTop: 4, fontSize: 12 },
+  heroSub: { color: 'rgba(255,255,255,0.72)', marginTop: 4, fontSize: 12 },
   heroBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 22, marginBottom: 6 },
-  chip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 },
-  chipOff: { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border },
-  chipText: { color: theme.text, fontWeight: '600', fontSize: 13 },
+  chipScroll: { marginHorizontal: -space.lg, marginTop: space.lg },
+  chips: { paddingHorizontal: space.lg, paddingBottom: space.md, gap: 8 },
+  chip: { height: 38, paddingHorizontal: space.md },
+  chipText: { fontWeight: '600', fontSize: 13 },
 });
