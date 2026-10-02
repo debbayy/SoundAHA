@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Sound } from '../types';
+import { readLocalMeta } from '../lib/readMeta';
 
 const KEY = 'soundly.localSounds';
 const isNative = Platform.OS !== 'web';
@@ -34,7 +35,20 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isNative) return; // web blob: URLs don't survive a reload, so nothing to restore
     AsyncStorage.getItem(KEY)
-      .then((raw) => raw && setLocalSounds(JSON.parse(raw)))
+      .then((raw) => {
+        if (!raw) return;
+        const list: Sound[] = JSON.parse(raw);
+        // Songs imported before tag reading existed: read their tags once now.
+        let changed = false;
+        const next = list.map((x) => {
+          if (!x.local || x.meta_checked) return x;
+          changed = true;
+          const m = readLocalMeta(x.audio_url, x.id);
+          return { ...x, title: m.title || x.title, artist: m.artist, album: m.album, cover_url: m.cover_url, meta_checked: true };
+        });
+        setLocalSounds(next);
+        if (changed) AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      })
       .catch(() => {});
   }, []);
 
@@ -51,7 +65,20 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
       const id = `local-${Date.now()}-${added.length}`;
       try {
         const uri = isNative ? copyIntoApp(a.uri, id, a.name) : a.uri;
-        added.push({ id, title: titleOf(a.name), category: 'local', emoji: '📱', duration: 0, audio_url: uri, local: true });
+        const m = isNative ? readLocalMeta(uri, id) : {};
+        added.push({
+          id,
+          title: m.title || titleOf(a.name),
+          artist: m.artist,
+          album: m.album,
+          cover_url: m.cover_url,
+          meta_checked: true,
+          category: 'local',
+          emoji: '📱',
+          duration: 0,
+          audio_url: uri,
+          local: true,
+        });
       } catch {
         // skip files that can't be copied
       }
@@ -64,6 +91,7 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
     const target = localSounds.find((x) => x.id === id);
     if (target && isNative) {
       try { new File(target.audio_url).delete(); } catch { /* already gone */ }
+      if (target.cover_url) { try { new File(target.cover_url).delete(); } catch { /* already gone */ } }
     }
     persist(localSounds.filter((x) => x.id !== id));
   }, [localSounds]);

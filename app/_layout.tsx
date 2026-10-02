@@ -33,6 +33,10 @@ export default function RootLayout() {
             <Backdrop>
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}>
                 <Stack.Screen
+                  name="player"
+                  options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: t.bg } }}
+                />
+                <Stack.Screen
                   name="login"
                   options={{ presentation: 'modal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: t.bg } }}
                 />

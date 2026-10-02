@@ -6,6 +6,10 @@ export type Sound = {
   audio_url: string;
   audio_source?: number; // bundled asset (require()), used by built-in default sounds
   thumbnail_url?: string | null;
+  artist?: string; // from the file's tags (imported songs)
+  album?: string;
+  cover_url?: string; // cover art extracted from the file's tags
+  meta_checked?: boolean; // tags were already read for this imported file
   emoji?: string;
   duration: number; // seconds
   is_featured?: boolean;

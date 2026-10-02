@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { MINI_PLAYER_HEIGHT, Palette, useTheme } from '../theme';
 import { usePlayer } from '../context/PlayerContext';
@@ -7,12 +8,16 @@ import { Equalizer } from './Equalizer';
 import { Glass } from './Glass';
 import { LiquidButton } from './LiquidButton';
 import { SeekBar } from './SeekBar';
+import { SoundArt } from './SoundArt';
+import { SpeedDialog } from './SpeedDialog';
 import { BRAND_TINT } from './tints';
 
 export function MiniPlayer() {
   const t = useTheme();
   const s = useMemo(() => makeStyles(t), [t]);
-  const { current, playing, toggle, play } = usePlayer();
+  const { current, playing, toggle, rate, setRate } = usePlayer();
+  const [speedOpen, setSpeedOpen] = useState(false);
+  const router = useRouter();
   const shown = useRef(new Animated.Value(0)).current;
   const has = !!current;
 
@@ -32,14 +37,25 @@ export function MiniPlayer() {
       <Glass radius={26} intensity={60} style={s.wrap}>
         <View style={s.body}>
           <View style={s.row}>
-            <View style={s.thumb}><Text style={{ fontSize: 22 }}>{current.emoji ?? '🔊'}</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.title} numberOfLines={1}>{current.title}</Text>
-              <Text style={s.sub}>{playing ? 'NOW PLAYING' : 'PAUSED'}</Text>
-            </View>
+            {/* tapping the song area opens the full-screen player */}
+            <Pressable style={({ pressed }) => [s.info, pressed && { opacity: 0.7 }]} onPress={() => router.push('/player')} accessibilityRole="button" accessibilityLabel="Open full player">
+              <SoundArt sound={current} size={42} radius={14} style={s.thumb} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.title} numberOfLines={1}>{current.title}</Text>
+                <Text style={s.sub} numberOfLines={1}>{current.artist ? current.artist.toUpperCase() : playing ? 'NOW PLAYING' : 'PAUSED'}</Text>
+              </View>
+            </Pressable>
             <Equalizer active={playing} />
-            <LiquidButton compact hitSlop={8} style={s.ghost} wrapStyle={{ marginRight: 8 }} onPress={() => play(current)} accessibilityRole="button" accessibilityLabel="Replay">
-              <Ionicons name="refresh" size={18} color={t.btnText} />
+            <LiquidButton
+              compact
+              hitSlop={8}
+              style={s.speed}
+              wrapStyle={{ marginRight: 8 }}
+              onPress={() => setSpeedOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Playback speed ${rate}x. Tap to choose`}
+            >
+              <Text style={[s.speedText, { color: rate === 1 ? t.btnText : t.accent2 }]}>{`${rate}x`}</Text>
             </LiquidButton>
             <LiquidButton compact hitSlop={8} tint={BRAND_TINT} style={s.btn} onPress={toggle} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
               <Ionicons name={playing ? 'pause' : 'play'} size={18} color="#fff" style={{ marginLeft: playing ? 0 : 2 }} />
@@ -48,6 +64,7 @@ export function MiniPlayer() {
           <SeekBar />
         </View>
       </Glass>
+      <SpeedDialog visible={speedOpen} rate={rate} onChange={(r) => setRate(r, false)} onCommit={(r) => setRate(r, true)} onClose={() => setSpeedOpen(false)} />
     </Animated.View>
   );
 }
@@ -56,9 +73,11 @@ const makeStyles = (t: Palette) => StyleSheet.create({
   wrap: { height: MINI_PLAYER_HEIGHT },
   body: { flex: 1, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6, justifyContent: 'space-between' },
   row: { flexDirection: 'row', alignItems: 'center' },
-  thumb: { width: 42, height: 42, borderRadius: 14, backgroundColor: t.fill, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  info: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  thumb: { marginRight: 12 },
   title: { fontSize: 15, fontWeight: '700', color: t.text },
   sub: { fontSize: 10, color: t.accent2, marginTop: 2, letterSpacing: 1.5, fontWeight: '600' },
-  ghost: { width: 36, height: 36 },
+  speed: { height: 36, minWidth: 50, paddingHorizontal: 8 },
+  speedText: { fontSize: 13, fontWeight: '700' },
   btn: { width: 40, height: 40 },
 });

@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLocalSounds } from '../context/LocalSoundsContext';
 import { Glass } from './Glass';
 import { ConfirmDialog } from './ConfirmDialog';
+import { SoundArt } from './SoundArt';
 import { LiquidButton } from './LiquidButton';
 import { BRAND_TINT } from './tints';
 
@@ -50,10 +51,10 @@ export function SoundRow({ sound }: { sound: Sound }) {
       <Glass blur={false} style={isCurrent ? s.on : undefined}>
         <View style={s.row}>
           <Pressable onPress={() => play(sound)} style={({ pressed }) => [s.main, pressed && s.pressed]}>
-            <View style={s.thumb}><Text style={{ fontSize: 24 }}>{sound.emoji ?? '🔊'}</Text></View>
+            <SoundArt sound={sound} size={48} radius={16} style={s.thumb} />
             <View style={{ flex: 1 }}>
               <Text style={s.title} numberOfLines={1}>{sound.title}</Text>
-              <Text style={s.sub}>{sound.local ? 'MY SOUNDS' : `${sound.category.toUpperCase()}  ·  ${fmt(sound.duration)}`}</Text>
+              <Text style={s.sub} numberOfLines={1}>{sound.local ? (sound.artist ? sound.artist.toUpperCase() : 'MY SOUNDS') : `${sound.category.toUpperCase()}  ·  ${fmt(sound.duration)}`}</Text>
             </View>
           </Pressable>
           {sound.local ? (
@@ -80,7 +81,7 @@ const makeStyles = (t: Palette) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14 },
   main: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   pressed: { opacity: 0.6 },
-  thumb: { width: 48, height: 48, borderRadius: 16, backgroundColor: t.fill, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  thumb: { marginRight: 12 },
   title: { fontSize: 16, fontWeight: '700', color: t.text },
   sub: { fontSize: 11, color: t.muted, marginTop: 3, letterSpacing: 1, fontWeight: '500' },
   gap: { marginHorizontal: 6 },
