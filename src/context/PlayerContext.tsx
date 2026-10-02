@@ -12,7 +12,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'doNotMix' }).catch(() => {});
     return () => ref.current?.remove();
   }, []);
 
@@ -25,6 +25,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const p = createAudioPlayer(source);
       p.addListener('playbackStatusUpdate', (st) => { if (st.didJustFinish) setPlaying(false); });
       p.play();
+      p.setActiveForLockScreen(true, { title: s.title, artist: 'Soundly' });
       ref.current = p;
       setPlaying(true);
     } catch {
