@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { MINI_PLAYER_HEIGHT, Palette, useTheme } from '../theme';
 import { usePlayer } from '../context/PlayerContext';

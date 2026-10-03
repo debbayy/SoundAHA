@@ -97,7 +97,7 @@ let mode: ThemeMode = 'system';
 const listeners = new Set<() => void>();
 // Also tell the OS, so native bits (keyboard, dialogs) match the chosen theme.
 const emit = () => {
-  try { Appearance.setColorScheme(mode === 'system' ? null : mode); } catch { }
+  try { Appearance.setColorScheme(mode === 'system' ? 'unspecified' : mode); } catch { }
   listeners.forEach((l) => l());
 };
 

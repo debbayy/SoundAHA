@@ -10,27 +10,67 @@ import { fingerprintFile } from '../lib/fingerprint';
 const KEY = 'soundly.localSounds';
 const isNative = Platform.OS !== 'web';
 
+const FOLDER_KEY = 'soundly.lastFolder';
+
+export type ImportResult = { added: number; skipped: number; skippedTitles: string[] }; // skipped = songs already in the library
+// An audio file found in a folder the user opened (not imported yet).
+export type FolderSong = { uri: string; name: string; title: string };
+export type FolderScan = { folderName: string; songs: FolderSong[] };
+
 type Ctx = {
   localSounds: Sound[];
-  importSounds: () => Promise<{ added: number; skipped: number; skippedTitles: string[] }>; // skipped = songs already in the library
+  importSounds: () => Promise<ImportResult>;
+  pickFolder: () => Promise<FolderScan | null>; // null = the user backed out of the folder picker
+  importFromFolder: (songs: FolderSong[], onProgress?: (done: number) => void) => Promise<ImportResult>;
   removeSound: (id: string) => void;
 };
-const LocalCtx = createContext<Ctx>({ localSounds: [], importSounds: async () => ({ added: 0, skipped: 0, skippedTitles: [] }), removeSound: () => {} });
+const empty: ImportResult = { added: 0, skipped: 0, skippedTitles: [] };
+const LocalCtx = createContext<Ctx>({
+  localSounds: [],
+  importSounds: async () => empty,
+  pickFolder: async () => null,
+  importFromFolder: async () => empty,
+  removeSound: () => {},
+});
 export const useLocalSounds = () => useContext(LocalCtx);
 
 // Two songs count as the same title when they match ignoring case, spacing and a trailing "(1)"
 // (what Android adds to a re-downloaded file). The library keeps one entry per title.
-const normTitle = (s: string) => s.toLowerCase().replace(/s*(d+)s*$/, '').replace(/s+/g, ' ').trim();
+export const normTitle = (s: string) => s.toLowerCase().replace(/\s*\(\d+\)\s*$/, '').replace(/\s+/g, ' ').trim();
 
 const titleOf = (name: string) => name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Untitled';
 
-// Copy the picked file into the app's own storage so it survives the original being moved/deleted.
-function copyIntoApp(uri: string, id: string, name: string): string {
+const AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|amr|3gp|wma|mid|midi)$/i;
+const MAX_DEPTH = 4; // how deep to look into sub-folders of the opened folder
+
+// Every audio file in `dir` and its sub-folders (hidden folders like .thumbnails are skipped).
+function findAudio(dir: Directory, depth = 0): FolderSong[] {
+  let entries: (Directory | File)[];
+  try { entries = dir.list(); } catch { return []; }
+  const out: FolderSong[] = [];
+  for (const e of entries) {
+    const name = e.name.replace(/\/$/, '');
+    if (e instanceof Directory) {
+      if (depth < MAX_DEPTH && !name.startsWith('.')) out.push(...findAudio(e, depth + 1));
+      continue;
+    }
+    let isAudio = AUDIO_EXT.test(name);
+    if (!isAudio && !name.includes('.')) { try { isAudio = !!e.type?.startsWith('audio/'); } catch { /* unknown type */ } }
+    if (isAudio) out.push({ uri: e.uri, name, title: titleOf(name) });
+  }
+  return out;
+}
+
+// Copy a song into the app's own storage so it survives the original being moved/deleted.
+// Folder files are content:// URIs, which File.copy can't read, so those go through their bytes.
+async function copyIntoApp(uri: string, id: string, name: string): Promise<string> {
   const dir = new Directory(Paths.document, 'sounds');
   dir.create({ idempotent: true });
   const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '.mp3';
   const dest = new File(dir, `${id}${ext}`);
-  new File(uri).copy(dest);
+  const src = new File(uri);
+  if (uri.startsWith('content://')) dest.write(await src.bytes());
+  else src.copy(dest);
   return dest.uri;
 }
 
@@ -70,20 +110,26 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
     if (isNative) AsyncStorage.setItem(KEY, JSON.stringify(list)).catch(() => {});
   };
 
-  const importSounds = useCallback(async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true, copyToCacheDirectory: true });
-    if (res.canceled || !res.assets?.length) return { added: 0, skipped: 0, skippedTitles: [] };
+  // Adds the given files to the library, skipping songs that are already in it (same contents or same title).
+  const addFiles = useCallback(async (files: { uri: string; name: string }[], onProgress?: (done: number) => void): Promise<ImportResult> => {
     const added: Sound[] = [];
     const skippedTitles: string[] = [];
     const seen = new Set(localSounds.map((x) => x.fingerprint).filter(Boolean) as string[]);
     const seenTitles = new Set(localSounds.map((x) => normTitle(x.title)));
-    for (const a of res.assets) {
-      const fingerprint = isNative ? fingerprintFile(a.uri) : null;
-      if (fingerprint && seen.has(fingerprint)) { skippedTitles.push(titleOf(a.name)); continue; } // same song already imported
-      if (fingerprint) seen.add(fingerprint);
+    for (let i = 0; i < files.length; i++) {
+      const a = files[i];
+      onProgress?.(i);
       const id = `local-${Date.now()}-${added.length}`;
       try {
-        const uri = isNative ? copyIntoApp(a.uri, id, a.name) : a.uri;
+        const uri = isNative ? await copyIntoApp(a.uri, id, a.name) : a.uri;
+        const fingerprint = isNative ? fingerprintFile(uri) : null;
+        if (fingerprint && seen.has(fingerprint)) {
+          // same song already imported: undo the copy
+          if (isNative) { try { new File(uri).delete(); } catch { /* ignore */ } }
+          skippedTitles.push(titleOf(a.name));
+          continue;
+        }
+        if (fingerprint) seen.add(fingerprint);
         const m = isNative ? readLocalMeta(uri, id) : {};
         const title = m.title || titleOf(a.name);
         if (seenTitles.has(normTitle(title))) {
@@ -114,9 +160,39 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
         // skip files that can't be copied
       }
     }
+    onProgress?.(files.length);
     if (added.length) persist([...added, ...localSounds]);
     return { added: added.length, skipped: skippedTitles.length, skippedTitles };
   }, [localSounds]);
+
+  const importSounds = useCallback(async () => {
+    const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true, copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.length) return empty;
+    return addFiles(res.assets);
+  }, [addFiles]);
+
+  // Opens the system folder picker and lists the songs inside (Android). Android keeps the read
+  // permission, so the picker starts in the last folder next time.
+  const pickFolder = useCallback(async (): Promise<FolderScan | null> => {
+    const last = (await AsyncStorage.getItem(FOLDER_KEY).catch(() => null)) ?? undefined;
+    let dir: Directory;
+    try {
+      dir = (await Directory.pickDirectoryAsync(last)) as Directory; // returns the JS Directory at runtime; the typings say the native one
+    } catch (e) {
+      if (String(e).toLowerCase().includes('cancel')) return null;
+      throw e;
+    }
+    if (!dir?.uri) return null;
+    AsyncStorage.setItem(FOLDER_KEY, dir.uri).catch(() => {});
+    const songs = findAudio(dir).sort((a, b) => a.title.localeCompare(b.title));
+    const folderName = decodeURIComponent(dir.uri).replace(/\/$/, '').split(/[/:]/).pop() || 'Folder';
+    return { folderName, songs };
+  }, []);
+
+  const importFromFolder = useCallback(
+    (songs: FolderSong[], onProgress?: (done: number) => void) => addFiles(songs, onProgress),
+    [addFiles],
+  );
 
   const removeSound = useCallback((id: string) => {
     const target = localSounds.find((x) => x.id === id);
@@ -127,5 +203,5 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
     persist(localSounds.filter((x) => x.id !== id));
   }, [localSounds]);
 
-  return <LocalCtx.Provider value={{ localSounds, importSounds, removeSound }}>{children}</LocalCtx.Provider>;
+  return <LocalCtx.Provider value={{ localSounds, importSounds, pickFolder, importFromFolder, removeSound }}>{children}</LocalCtx.Provider>;
 }

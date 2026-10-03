@@ -54,6 +54,13 @@ export const useProgress = () => useSyncExternalStore(subscribe, () => progress)
 
 const hasSource = (s: Sound) => !!(s.audio_source ?? s.audio_url);
 
+// Keep playing when the app goes to the background or the screen locks. Applied again before
+// every song, not just once at start-up: if this call ever fails, iOS pauses the song as soon as
+// the app leaves the screen.
+const applyAudioMode = () =>
+  setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'doNotMix' })
+    .catch((e) => console.warn('[player] setAudioModeAsync failed', e));
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const ref = useRef<AudioPlayer | null>(null);
   const [current, setCurrent] = useState<Sound | null>(null);
@@ -70,7 +77,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const historyRef = useRef<string[]>([]); // ids played before the current one, for "previous"
 
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'doNotMix' }).catch(() => {});
+    applyAudioMode();
     AsyncStorage.getItem(RATE_KEY)
       .then((v) => {
         const r = Number(v);
@@ -85,8 +92,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setModeState(m);
       })
       .catch(() => {});
-    return () => ref.current?.remove();
+    return () => stopCurrent();
   }, []);
+
+  // Silence and free the loaded player. remove() alone doesn't always stop the sound (the lock
+  // screen can still hold the player), so pause and release the lock screen first. Each step is
+  // guarded on its own so one failing can't leave the old song playing.
+  const stopCurrent = () => {
+    const p = ref.current;
+    ref.current = null;
+    if (!p) return;
+    try { p.pause(); } catch {}
+    try { p.clearLockScreenControls(); } catch {}
+    try { p.remove(); } catch {}
+  };
 
   const setQueue = (list: Sound[]) => {
     queueRef.current = list;
@@ -117,30 +136,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentRef.current = s;
     setCurrent(s);
     setProgress({ position: 0, duration: s.duration || 0 });
+    stopCurrent();
+    const source = s.audio_source ?? (s.audio_url ? { uri: s.audio_url } : null);
+    if (!source) { setPlaying(false); return; }
+    let p: AudioPlayer;
     try {
-      ref.current?.remove();
-      const source = s.audio_source ?? (s.audio_url ? { uri: s.audio_url } : null);
-      if (!source) { setPlaying(false); return; }
-      const p = createAudioPlayer(source, { updateInterval: 250 });
+      p = createAudioPlayer(source, { updateInterval: 250 });
+    } catch {
+      setPlaying(false);
+      return;
+    }
+    // Track it before anything else can throw, so the next song always finds and stops it.
+    ref.current = p;
+    applyAudioMode();
+    try {
       p.loop = modeRef.current.loop;
       p.addListener('playbackStatusUpdate', (st) => {
+        if (ref.current !== p) return; // a replaced player must not move the bar or trigger autoplay
         setProgress({ position: st.currentTime, duration: st.duration || progress.duration });
         if (st.didJustFinish) onEnded.current();
       });
       p.play();
+      setPlaying(true);
+    } catch {
+      stopCurrent();
+      setPlaying(false);
+      return;
+    }
+    // Extras: a failure here must not stop the song that's already playing.
+    try {
       p.shouldCorrectPitch = true; // keep the voice natural when sped up or slowed down
       p.setPlaybackRate(rateRef.current, 'high'); // after play(): some platforms reset the rate on start
+    } catch {}
+    try {
       p.setActiveForLockScreen(true, {
         title: s.title,
         artist: s.artist || 'Soundly',
         albumTitle: s.album,
         artworkUrl: s.cover_url ?? s.thumbnail_url ?? undefined,
       });
-      ref.current = p;
-      setPlaying(true);
-    } catch {
-      setPlaying(false);
-    }
+    } catch {}
   };
 
   const play = (s: Sound, list?: Sound[]) => {
@@ -226,8 +261,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setQueue(queueRef.current.filter((x) => x.id !== id));
     historyRef.current = historyRef.current.filter((x) => x !== id);
     if (currentRef.current?.id !== id) return;
-    try { ref.current?.remove(); } catch {}
-    ref.current = null;
+    stopCurrent();
     currentRef.current = null;
     setCurrent(null);
     setPlaying(false);

@@ -1,8 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { AuthProvider } from '../src/context/AuthContext';
 import { LocalSoundsProvider } from '../src/context/LocalSoundsContext';
 import { PlayerProvider } from '../src/context/PlayerContext';

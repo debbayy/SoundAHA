@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Animated, Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -23,6 +24,7 @@ export default function Player() {
   const s = useMemo(() => makeStyles(t), [t]);
   const router = useRouter();
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev } = usePlayer();
   const [speedOpen, setSpeedOpen] = useState(false);
 
@@ -50,6 +52,9 @@ export default function Player() {
 
   const cover = coverOf(current);
   const disc = Math.min(width - 56, height * 0.38, 340);
+  // cover art spans the full content width (lined up with the title and controls); the height cap
+  // keeps the controls on screen on short phones
+  const art = Math.min(width - space.xl * 2, height * 0.5);
   const artist = current.artist || CATEGORY[current.category] || 'Soundly';
   const on = (active: boolean) => (active ? '#fff' : t.btnText);
 
@@ -61,7 +66,10 @@ export default function Player() {
           <View style={[StyleSheet.absoluteFill, { backgroundColor: t.isDark ? 'rgba(5,5,12,0.62)' : 'rgba(238,240,251,0.7)' }]} />
         </>
       )}
-      <SafeAreaView style={s.screen} {...swipe.panHandlers}>
+      <StatusBar style={t.isDark ? 'light' : 'dark'} hidden={false} animated />
+      {/* Explicit insets instead of <SafeAreaView>: inside the full-screen modal it can measure 0 on
+          iOS, which pushed the top row under the notch and over the clock / battery. */}
+      <View style={[s.screen, { paddingTop: insets.top, paddingBottom: insets.bottom + space.lg }]} {...swipe.panHandlers}>
         <View style={s.top}>
           <LiquidButton compact hitSlop={10} style={s.round} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Close player">
             <Ionicons name="chevron-down" size={24} color={t.btnText} />
@@ -73,7 +81,7 @@ export default function Player() {
         </View>
 
         <View style={s.discWrap}>
-          <Vinyl sound={current} playing={playing} size={disc} />
+          {cover ? <AlbumCover uri={cover} playing={playing} size={art} /> : <Vinyl sound={current} playing={playing} size={disc} />}
         </View>
 
         <View style={s.info}>
@@ -140,16 +148,39 @@ export default function Player() {
           <Ionicons name="infinite" size={18} color={on(mode.autoplay)} />
           <Text style={[s.autoText, { color: on(mode.autoplay) }]}>{mode.autoplay ? 'Autoplay on' : 'Autoplay off'}</Text>
         </LiquidButton>
-      </SafeAreaView>
+      </View>
 
       <SpeedDialog visible={speedOpen} rate={rate} onChange={(r) => setRate(r, false)} onCommit={(r) => setRate(r, true)} onClose={() => setSpeedOpen(false)} />
     </Backdrop>
   );
 }
 
+// Songs with cover art show the art itself, standing still (a spinning photo is dizzying). It
+// eases a little smaller while paused so play / pause still reads at a glance.
+function AlbumCover({ uri, playing, size }: { uri: string; playing: boolean; size: number }) {
+  const scale = useRef(new Animated.Value(playing ? 1 : 0.88)).current;
+  useEffect(() => {
+    Animated.spring(scale, { toValue: playing ? 1 : 0.88, useNativeDriver: true, damping: 16, stiffness: 160 }).start();
+  }, [playing]);
+  const radius = size * 0.08;
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        transform: [{ scale }],
+        boxShadow: playing ? '0 22 44 rgba(0,0,0,0.5)' : '0 12 28 rgba(0,0,0,0.4)',
+      }}
+    >
+      <Image source={{ uri }} resizeMode="cover" style={{ width: size, height: size, borderRadius: radius }} />
+    </Animated.View>
+  );
+}
+
 const makeStyles = (t: Palette) =>
   StyleSheet.create({
-    screen: { flex: 1, paddingHorizontal: space.xl, paddingBottom: space.lg },
+    screen: { flex: 1, paddingHorizontal: space.xl },
     top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: space.sm },
     round: { width: 44, height: 44 },
     speed: { height: 44, minWidth: 56, paddingHorizontal: 10 },

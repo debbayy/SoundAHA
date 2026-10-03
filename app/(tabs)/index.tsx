@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,8 @@ import { PressableScale } from '../../src/components/PressableScale';
 import { ThemeToggle } from '../../src/components/ThemeToggle';
 import { useSounds } from '../../src/data/useSounds';
 import { usePlayer } from '../../src/context/PlayerContext';
-import { useLocalSounds } from '../../src/context/LocalSoundsContext';
+import { FolderScan, FolderSong, ImportResult, normTitle, useLocalSounds } from '../../src/context/LocalSoundsContext';
+import { FolderSongsDialog } from '../../src/components/FolderSongsDialog';
 import { useBottomSpace } from '../../src/lib/useBottomSpace';
 
 const CATS = [
@@ -28,7 +29,7 @@ export default function Home() {
   const t = useTheme();
   const s = useMemo(() => makeStyles(t), [t]);
   const remote = useSounds();
-  const { localSounds, importSounds } = useLocalSounds();
+  const { localSounds, importSounds, pickFolder, importFromFolder } = useLocalSounds();
   const { play } = usePlayer();
   const bottom = useBottomSpace();
   const [cat, setCat] = useState('all');
@@ -37,20 +38,41 @@ export default function Home() {
   const list = cat === 'all' ? sounds : sounds.filter((x) => x.category === cat);
   const hero = remote.find((x) => x.category === 'trending') ?? remote[0];
 
+  const [folder, setFolder] = useState<FolderScan | null>(null);
+  const libraryTitles = useMemo(() => new Set(localSounds.map((x) => normTitle(x.title))), [localSounds]);
+
+  const showResult = ({ added, skipped, skippedTitles }: ImportResult) => {
+    if (added) setCat('local');
+    if (skipped) {
+      const names = skippedTitles.slice(0, 3).map((n) => `"${n}"`).join(', ') + (skipped > 3 ? ` and ${skipped - 3} more` : '');
+      setNotice({
+        title: skipped === 1 ? "Can't add this song" : "Can't add these songs",
+        message: `${names} ${skipped === 1 ? 'is' : 'are'} already in your library. Each title can only be added once.`,
+      });
+    }
+  };
+
   const onImport = async () => {
     try {
-      const { added, skipped, skippedTitles } = await importSounds();
-      if (added) setCat('local');
-      if (skipped) {
-        const names = skippedTitles.slice(0, 3).map((n) => `"${n}"`).join(', ') + (skipped > 3 ? ` and ${skipped - 3} more` : '');
-        setNotice({
-          title: skipped === 1 ? "Can't add this song" : "Can't add these songs",
-          message: `${names} ${skipped === 1 ? 'is' : 'are'} already in your library. Each title can only be added once.`,
-        });
-      }
+      showResult(await importSounds());
     } catch {
       setNotice({ title: 'Import failed', message: 'Could not read that file. Try another audio file.' });
     }
+  };
+
+  const onOpenFolder = async () => {
+    try {
+      const scan = await pickFolder();
+      if (scan) setFolder(scan);
+    } catch {
+      setNotice({ title: "Can't open folder", message: 'Could not read that folder. Try another one.' });
+    }
+  };
+
+  const onImportFolder = async (songs: FolderSong[], onProgress: (done: number) => void) => {
+    const res = await importFromFolder(songs, onProgress);
+    setFolder(null);
+    showResult(res);
   };
 
   return (
@@ -64,6 +86,13 @@ export default function Home() {
         onConfirm={() => setNotice(null)}
         onCancel={() => setNotice(null)}
       />
+      <FolderSongsDialog
+        scan={folder}
+        libraryTitles={libraryTitles}
+        normTitle={normTitle}
+        onImport={onImportFolder}
+        onClose={() => setFolder(null)}
+      />
       <FlatList
         data={list}
         keyExtractor={(x) => x.id}
@@ -71,7 +100,7 @@ export default function Home() {
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: bottom }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={s.empty}>{cat === 'local' ? 'No imported sounds yet. Tap the + button to pick audio from your phone.' : 'No sounds'}</Text>
+          <Text style={s.empty}>{cat === 'local' ? 'No imported sounds yet. Tap the folder button to open a music folder, or + to pick songs one by one.' : 'No sounds'}</Text>
         }
         ListHeaderComponent={
           <View>
@@ -82,6 +111,11 @@ export default function Home() {
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>
               <ThemeToggle />
+              {Platform.OS === 'android' && (
+                <LiquidButton compact style={s.badge} onPress={onOpenFolder} accessibilityRole="button" accessibilityLabel="Open a music folder">
+                  <Ionicons name="folder-open-outline" size={22} color={t.btnText} />
+                </LiquidButton>
+              )}
               <LiquidButton compact style={s.badge} onPress={onImport} accessibilityRole="button" accessibilityLabel="Import audio from phone">
                 <Ionicons name="add" size={26} color={t.btnText} />
               </LiquidButton>
