@@ -22,6 +22,7 @@ type Ctx = {
   importSounds: () => Promise<ImportResult>;
   pickFolder: () => Promise<FolderScan | null>; // null = the user backed out of the folder picker
   importFromFolder: (songs: FolderSong[], onProgress?: (done: number) => void) => Promise<ImportResult>;
+  saveOnline: (s: Sound) => Promise<ImportResult>; // download an online (Freesound) sound into My Sounds
   removeSound: (id: string) => void;
 };
 const empty: ImportResult = { added: 0, skipped: 0, skippedTitles: [] };
@@ -30,6 +31,7 @@ const LocalCtx = createContext<Ctx>({
   importSounds: async () => empty,
   pickFolder: async () => null,
   importFromFolder: async () => empty,
+  saveOnline: async () => empty,
   removeSound: () => {},
 });
 export const useLocalSounds = () => useContext(LocalCtx);
@@ -111,7 +113,7 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
   };
 
   // Adds the given files to the library, skipping songs that are already in it (same contents or same title).
-  const addFiles = useCallback(async (files: { uri: string; name: string }[], onProgress?: (done: number) => void): Promise<ImportResult> => {
+  const addFiles = useCallback(async (files: { uri: string; name: string; artist?: string }[], onProgress?: (done: number) => void): Promise<ImportResult> => {
     const added: Sound[] = [];
     const skippedTitles: string[] = [];
     const seen = new Set(localSounds.map((x) => x.fingerprint).filter(Boolean) as string[]);
@@ -145,7 +147,7 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
         added.push({
           id,
           title,
-          artist: m.artist,
+          artist: m.artist || a.artist,
           album: m.album,
           cover_url: m.cover_url,
           meta_checked: true,
@@ -194,6 +196,18 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
     [addFiles],
   );
 
+  // Online previews have no tags, so the title / author come from the search result.
+  const saveOnline = useCallback(async (snd: Sound): Promise<ImportResult> => {
+    if (!isNative) return addFiles([{ uri: snd.audio_url, name: `${snd.title}.mp3`, artist: snd.artist }]);
+    const tmp = new File(Paths.cache, `online-${snd.id}.mp3`);
+    await File.downloadFileAsync(snd.audio_url, tmp, { idempotent: true });
+    try {
+      return await addFiles([{ uri: tmp.uri, name: `${snd.title}.mp3`, artist: snd.artist }]);
+    } finally {
+      try { tmp.delete(); } catch { /* ignore */ }
+    }
+  }, [addFiles]);
+
   const removeSound = useCallback((id: string) => {
     const target = localSounds.find((x) => x.id === id);
     if (target && isNative) {
@@ -203,5 +217,5 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
     persist(localSounds.filter((x) => x.id !== id));
   }, [localSounds]);
 
-  return <LocalCtx.Provider value={{ localSounds, importSounds, pickFolder, importFromFolder, removeSound }}>{children}</LocalCtx.Provider>;
+  return <LocalCtx.Provider value={{ localSounds, importSounds, pickFolder, importFromFolder, saveOnline, removeSound }}>{children}</LocalCtx.Provider>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ import { SpeedDialog } from '../src/components/SpeedDialog';
 import { Vinyl } from '../src/components/Vinyl';
 import { coverOf } from '../src/components/SoundArt';
 import { BRAND_TINT } from '../src/components/tints';
+import { ConfirmDialog } from '../src/components/ConfirmDialog';
+import { shareSound } from '../src/lib/shareSound';
 
 const CATEGORY: Record<string, string> = { meme: 'Meme', music: 'Music', trending: 'Trending', local: 'My Sounds' };
 const tick = () => Haptics.selectionAsync().catch(() => {});
@@ -27,6 +29,22 @@ export default function Player() {
   const insets = useSafeAreaInsets();
   const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev } = usePlayer();
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState(false);
+
+  const onShare = async () => {
+    if (!current || sharing) return;
+    tick();
+    setSharing(true);
+    try {
+      await shareSound(current);
+    } catch (e) {
+      console.warn('[share] failed', e);
+      setShareError(true);
+    } finally {
+      setSharing(false);
+    }
+  };
 
   // Swipe down anywhere on the screen to close it. The timeline / speed slider claim their own
   // touches first, so dragging those never closes the player.
@@ -88,6 +106,7 @@ export default function Player() {
           <Text style={s.title} numberOfLines={2}>{current.title}</Text>
           <Text style={s.artist} numberOfLines={1}>{artist}</Text>
           {!!current.album && <Text style={s.album} numberOfLines={1}>{current.album}</Text>}
+          {!!current.credit && <Text style={s.album} numberOfLines={1}>{current.credit}</Text>}
         </View>
 
         <View style={s.seek}>
@@ -135,21 +154,34 @@ export default function Player() {
           </LiquidButton>
         </View>
 
-        <LiquidButton
-          compact
-          tint={mode.autoplay ? BRAND_TINT : undefined}
-          wrapStyle={s.autoWrap}
-          style={s.auto}
-          onPress={() => { tick(); setMode({ autoplay: !mode.autoplay }); }}
-          accessibilityRole="button"
-          accessibilityState={{ selected: mode.autoplay }}
-          accessibilityLabel={mode.autoplay ? 'Autoplay on' : 'Autoplay off'}
-        >
-          <Ionicons name="infinite" size={18} color={on(mode.autoplay)} />
-          <Text style={[s.autoText, { color: on(mode.autoplay) }]}>{mode.autoplay ? 'Autoplay on' : 'Autoplay off'}</Text>
-        </LiquidButton>
+        <View style={s.bottomRow}>
+          <LiquidButton
+            compact
+            tint={mode.autoplay ? BRAND_TINT : undefined}
+            style={s.auto}
+            onPress={() => { tick(); setMode({ autoplay: !mode.autoplay }); }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: mode.autoplay }}
+            accessibilityLabel={mode.autoplay ? 'Autoplay on' : 'Autoplay off'}
+          >
+            <Ionicons name="infinite" size={18} color={on(mode.autoplay)} />
+            <Text style={[s.autoText, { color: on(mode.autoplay) }]}>{mode.autoplay ? 'Autoplay on' : 'Autoplay off'}</Text>
+          </LiquidButton>
+          <LiquidButton compact hitSlop={8} style={s.small} disabled={sharing} onPress={onShare} accessibilityRole="button" accessibilityLabel="Share this song">
+            {sharing ? <ActivityIndicator color={t.btnText} /> : <Ionicons name="share-outline" size={20} color={t.btnText} />}
+          </LiquidButton>
+        </View>
       </View>
 
+      <ConfirmDialog
+        visible={shareError}
+        title="Can't share"
+        message="This song couldn't be prepared for sharing. Please try again."
+        confirmLabel="OK"
+        hideCancel
+        onConfirm={() => setShareError(false)}
+        onCancel={() => setShareError(false)}
+      />
       <SpeedDialog visible={speedOpen} rate={rate} onChange={(r) => setRate(r, false)} onCommit={(r) => setRate(r, true)} onClose={() => setSpeedOpen(false)} />
     </Backdrop>
   );
@@ -197,7 +229,7 @@ const makeStyles = (t: Palette) =>
     skip: { width: 52, height: 52 },
     play: { width: 76, height: 76 },
     one: { position: 'absolute', fontSize: 8, fontWeight: '800', color: '#fff', top: 15 },
-    autoWrap: { alignSelf: 'center', marginTop: space.lg },
+    bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: space.lg },
     auto: { height: 40, paddingHorizontal: 18, flexDirection: 'row', gap: 8 },
     autoText: { fontSize: 13, fontWeight: '700' },
   });

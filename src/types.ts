@@ -3,6 +3,8 @@ export type Sound = {
   title: string;
   category: 'meme' | 'music' | 'trending' | 'local';
   local?: boolean; // imported from the phone; not in Supabase, so it can't be favorited
+  online?: boolean; // a Freesound search result: streamed, can be saved to My Sounds but not favorited
+  credit?: string; // author + license line required by the sound's Creative Commons license
   audio_url: string;
   audio_source?: number; // bundled asset (require()), used by built-in default sounds
   thumbnail_url?: string | null;

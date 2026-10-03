@@ -27,7 +27,8 @@
           "backgroundColor": "#07070F",
           "imageWidth": 200
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "android": {
       "package": "com.debytrisandi.soundly",
