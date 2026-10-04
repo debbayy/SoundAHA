@@ -1,4 +1,4 @@
-# Soundly (Expo + Supabase)
+# SoundAHA (Expo + Supabase)
 
 ```bash
 npm install

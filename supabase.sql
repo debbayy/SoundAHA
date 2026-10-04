@@ -1,4 +1,4 @@
--- Soundly database setup. Safe to run again: everything is created only if missing, and policies /
+-- SoundAHA database setup. Safe to run again: everything is created only if missing, and policies /
 -- functions are replaced. Run the whole file in Supabase → SQL Editor.
 
 -- ---- Catalog and favorites ------------------------------------------------------------------

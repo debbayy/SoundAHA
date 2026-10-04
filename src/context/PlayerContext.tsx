@@ -288,7 +288,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       p.setActiveForLockScreen(true, {
         title: s.title,
-        artist: s.artist || 'Soundly',
+        artist: s.artist || 'SoundAHA',
         albumTitle: s.album,
         artworkUrl: s.cover_url ?? s.thumbnail_url ?? undefined,
       });

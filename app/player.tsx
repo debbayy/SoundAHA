@@ -91,7 +91,7 @@ export default function Player() {
   // cover art spans the full content width (lined up with the title and controls); the height cap
   // keeps the controls on screen on short phones
   const art = Math.min(width - space.xl * 2, height * 0.5);
-  const artist = current.artist || CATEGORY[current.category] || 'Soundly';
+  const artist = current.artist || CATEGORY[current.category] || 'SoundAHA';
   const on = (active: boolean) => (active ? '#fff' : t.btnText);
   const faved = isFav(current.id);
   const upNextCount = upNext(queue, current.id).length;

@@ -128,8 +128,9 @@ export default function Home() {
         ListHeaderComponent={
           <View>
             <View style={s.top}>
-              <View>
-                <Text style={s.h1}>Soundly<Text style={{ color: t.accent2 }}>.</Text></Text>
+              {/* the title shrinks to fit next to the buttons on narrow (320–360dp) phones */}
+              <View style={{ flexShrink: 1, marginRight: space.sm }}>
+                <Text style={s.h1} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>SoundAHA<Text style={{ color: t.accent2 }}>.</Text></Text>
                 <Text style={s.sub}>Sounds for every moment</Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>

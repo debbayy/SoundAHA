@@ -26,7 +26,7 @@ export default function PartyScreen() {
   const shareCode = () => {
     if (!code) return;
     Haptics.selectionAsync().catch(() => {});
-    Share.share({ message: `Join my Soundly party! Open Soundly → Party → Join, and enter: ${code}` }).catch(() => {});
+    Share.share({ message: `Join my SoundAHA party! Open SoundAHA → Party → Join, and enter: ${code}` }).catch(() => {});
   };
 
   return (
