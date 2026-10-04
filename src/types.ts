@@ -13,6 +13,7 @@ export type Sound = {
   cover_url?: string; // cover art extracted from the file's tags
   fingerprint?: string; // identity of the file's contents, used to refuse importing the same song twice
   meta_checked?: boolean; // tags were already read for this imported file
+  party_key?: string; // received from a party: the song's key there (see lib/party.ts)
   emoji?: string;
   duration: number; // seconds
   is_featured?: boolean;

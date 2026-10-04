@@ -19,6 +19,7 @@ import { SleepDialog, useSleepLeft } from '../src/components/SleepDialog';
 import { PlayerMenu } from '../src/components/PlayerMenu';
 import { AddToPlaylistDialog } from '../src/components/SoundActions';
 import { useFavorites } from '../src/context/FavoritesContext';
+import { useParty } from '../src/context/PartyContext';
 import { shareSound } from '../src/lib/shareSound';
 import { upNext } from '../src/lib/queue';
 
@@ -35,6 +36,8 @@ export default function Player() {
   const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev, queue } = usePlayer();
   const { isFav, toggleFav } = useFavorites();
   const sleepLeft = useSleepLeft();
+  const party = useParty();
+  const inParty = party.phase === 'live';
   const [speedOpen, setSpeedOpen] = useState(false);
   const [sleepOpen, setSleepOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -112,10 +115,10 @@ export default function Player() {
           <View style={s.nowWrap} pointerEvents="none">
             <Text style={s.now}>NOW PLAYING</Text>
             {/* settings tucked in the menu still show here while they are changed from normal */}
-            {(rate !== 1 || sleepLeft) && (
+            {(rate !== 1 || sleepLeft || inParty) && (
               <Text style={s.note}>
-                {rate !== 1 && `${rate}x`}
-                {rate !== 1 && sleepLeft && '   ·   '}
+                {[inParty && `PARTY · ${party.members.length}`, rate !== 1 && `${rate}x`].filter(Boolean).join('   ·   ')}
+                {(rate !== 1 || inParty) && sleepLeft && '   ·   '}
                 {sleepLeft && <><Ionicons name="moon" size={10} color={t.accent2} />{`  ${sleepLeft}`}</>}
               </Text>
             )}
@@ -189,6 +192,7 @@ export default function Player() {
         items={[
           // toggles keep the menu open so the new state is visible; the others open something else
           { key: 'fav', icon: faved ? 'heart' : 'heart-outline', label: faved ? 'Remove from favorites' : 'Add to favorites', active: faved, onPress: () => { tick(); toggleFav(current); } },
+          { key: 'party', icon: 'people-outline', label: 'Party', value: inParty ? `${party.members.length} on` : undefined, active: inParty, onPress: () => fromMenu(() => router.push('/party')) },
           { key: 'queue', icon: 'list-outline', label: 'Queue', value: upNextCount ? String(upNextCount) : undefined, onPress: () => fromMenu(() => router.push('/queue')) },
           { key: 'playlist', icon: 'albums-outline', label: 'Add to playlist', onPress: () => fromMenu(() => setPlaylistOpen(true)) },
           { key: 'speed', icon: 'speedometer-outline', label: 'Playback speed', value: `${rate}x`, active: rate !== 1, onPress: () => fromMenu(() => setSpeedOpen(true)) },

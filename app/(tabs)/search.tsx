@@ -151,7 +151,7 @@ export default function Search() {
           ListEmptyComponent={<Text style={s.empty}>No sounds found</Text>}
           ListFooterComponent={
             needle && !freesoundReady ? (
-              <Text style={s.note}>Online search is off: set EXPO_PUBLIC_FREESOUND_KEY in .env and restart with "npx expo start -c".</Text>
+              <Text style={s.note}>Online search is off: set EXPO_PUBLIC_SUPABASE_URL and deploy the freesound-search function.</Text>
             ) : needle && online.length ? (
               <Text style={s.credit}>Sounds from Freesound.org · licensed by their authors</Text>
             ) : null

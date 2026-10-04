@@ -8,6 +8,8 @@ import { append, insertNext, pickNext as pickFrom } from '../lib/queue';
 import { useLibrary } from './LibraryContext';
 import { parseSession, serializeSession } from '../lib/playerSession';
 import { SleepChoice } from '../lib/sleep';
+import { isDrifting } from '../lib/party';
+import { cachedUri, cacheInBackground, isRemote } from '../lib/audioCache';
 
 // Playback speed range (slow ... fast) and the slider's step.
 export const MIN_RATE = 0.25;
@@ -48,11 +50,20 @@ type Ctx = {
   prev: () => void;
   stopIf: (id: string) => void;
   seekTo: (seconds: number) => void; // jump to a position in the current song
+  // Party sync (see PartyContext): what this phone plays right now, a way to hear about every change
+  // the user makes, and a way to apply a change that came from another phone without echoing it back.
+  snapshot: () => PlayerSnapshot;
+  actualPosition: () => number | null; // where the loaded song really is (null when not playing)
+  subscribeControl: (fn: () => void) => () => void;
+  applyRemote: (st: PlayerSnapshot) => void;
 };
+export type PlayerSnapshot = { sound: Sound | null; position: number; playing: boolean; rate: number };
 const noop = () => {};
 const PlayerCtx = createContext<Ctx>({
   current: null, playing: false, rate: 1, mode: DEFAULT_MODE, queue: [], canSkip: false, playNext: noop, addToQueue: noop, removeFromQueue: noop,
   sleepEndsAt: null, sleepEndOfSong: false, setSleep: noop, setRate: noop, setMode: noop, play: noop, cue: noop, toggle: noop, next: noop, prev: noop, stopIf: noop, seekTo: noop,
+  snapshot: () => ({ sound: null, position: 0, playing: false, rate: 1 }), actualPosition: () => null,
+  subscribeControl: () => noop, applyRemote: noop,
 });
 export const usePlayer = () => useContext(PlayerCtx);
 
@@ -79,7 +90,15 @@ const applyAudioMode = () =>
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const ref = useRef<AudioPlayer | null>(null);
   const [current, setCurrent] = useState<Sound | null>(null);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlayingState] = useState(false);
+  const playingRef = useRef(false);
+  const setPlaying = (v: boolean) => { playingRef.current = v; setPlayingState(v); };
+
+  // Changes made on this phone are announced to subscribers (the party). Changes applied from
+  // another phone set `applying` so they are not announced back.
+  const controlSubs = useRef(new Set<() => void>());
+  const applying = useRef(false);
+  const emit = () => { if (!applying.current) controlSubs.current.forEach((fn) => fn()); };
   const [rate, setRateState] = useState(1);
   const [mode, setModeState] = useState<PlayMode>(DEFAULT_MODE);
   const [queue, setQueueState] = useState<Sound[]>([]);
@@ -162,6 +181,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try { ref.current?.pause(); } catch {}
     setPlaying(false);
     savePosition();
+    emit();
   };
 
   const clearSleep = () => {
@@ -214,16 +234,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const pickNext = (wrap: boolean) =>
     pickFrom(queueRef.current, currentRef.current?.id, { shuffle: modeRef.current.shuffle, wrap });
 
-  // `startAt`: seconds to begin from (a song restored from the last session).
-  const startPlayback = (s: Sound, startAt = 0) => {
+  // `startAt`: seconds to begin from (a restored song, a party joining mid-song).
+  // `autoplay` false: load it paused there (a party that is paused).
+  const startPlayback = (s: Sound, startAt = 0, autoplay = true) => {
     currentRef.current = s;
     resumeAtRef.current = 0;
     setCurrent(s);
     setProgress({ position: startAt, duration: s.duration || 0 });
     saveSession();
     stopCurrent();
-    const source = s.audio_source ?? (s.audio_url ? { uri: s.audio_url } : null);
+    // a song from the internet plays from its saved copy when there is one, and is saved for next time
+    const source = s.audio_source ?? (s.audio_url ? { uri: cachedUri(s.audio_url) ?? s.audio_url } : null);
     if (!source) { setPlaying(false); return; }
+    if (s.audio_source === undefined && isRemote(s.audio_url)) cacheInBackground(s.audio_url);
     let p: AudioPlayer;
     try {
       p = createAudioPlayer(source, { updateInterval: 250 });
@@ -245,14 +268,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (Date.now() - lastPosSave.current >= POS_SAVE_MS) savePosition();
       });
       if (startAt > 0) p.seekTo(startAt).catch(() => {});
-      p.play();
-      setPlaying(true);
-      recordRef.current(s);
+      if (autoplay) {
+        p.play();
+        recordRef.current(s);
+      }
+      setPlaying(autoplay);
     } catch {
       stopCurrent();
       setPlaying(false);
+      emit();
       return;
     }
+    emit();
     // Extras: a failure here must not stop the song that's already playing.
     try {
       p.shouldCorrectPitch = true; // keep the voice natural when sped up or slowed down
@@ -291,6 +318,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaying(false);
     setProgress({ position: 0, duration: s.duration || 0 });
     saveSession();
+    emit();
   };
 
   // A song finished on its own.
@@ -301,18 +329,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPlaying(false);
       setProgress({ position: 0, duration: progress.duration }); // reopen at the start, not at the end
       savePosition();
+      emit();
       return;
     }
     if (modeRef.current.loop) {
       // The player loops by itself; if a platform still reports the end, just keep going.
       try { ref.current?.seekTo(0); ref.current?.play(); } catch {}
       setPlaying(true);
+      setProgress({ position: 0, duration: progress.duration });
+      emit(); // a party starts the song over together
       return;
     }
     if (modeRef.current.autoplay) {
       const n = pickNext(false);
       if (n) { play(n); return; }
     }
+    // Not announced: every phone in a party reaches the end by itself, and a phone with nothing
+    // queued saying "stopped" must not cut off the next song another phone just started.
     setPlaying(false);
   };
 
@@ -347,7 +380,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (p.playing) pause();
-    else { if (p.duration > 0 && p.currentTime >= p.duration) p.seekTo(0); p.play(); setPlaying(true); }
+    else {
+      if (p.duration > 0 && p.currentTime >= p.duration) { p.seekTo(0); setProgress({ position: 0, duration: progress.duration }); }
+      p.play();
+      setPlaying(true);
+      emit();
+    }
   };
 
   const setMode = (patch: Partial<PlayMode>) => {
@@ -363,7 +401,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     rateRef.current = nextRate;
     setRateState(nextRate);
     try { ref.current?.setPlaybackRate(nextRate, 'high'); } catch {}
-    if (save) AsyncStorage.setItem(RATE_KEY, String(nextRate)).catch(() => {});
+    if (save) {
+      AsyncStorage.setItem(RATE_KEY, String(nextRate)).catch(() => {});
+      emit(); // once the slider is let go, not on every step of the drag
+    }
   };
 
   const seekTo = (seconds: number) => {
@@ -375,12 +416,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const to = Math.max(0, max > 0 ? Math.min(seconds, max) : seconds);
       resumeAtRef.current = to;
       setProgress({ position: to, duration: progress.duration });
+      emit();
       return;
     }
     const max = p.duration || progress.duration;
     const to = Math.max(0, max > 0 ? Math.min(seconds, max) : seconds);
     setProgress({ position: to, duration: progress.duration }); // move the bar right away
     p.seekTo(to).catch(() => {});
+    emit();
   };
 
   // Queue edits. With nothing loaded yet, the song simply starts playing.
@@ -414,11 +457,64 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaying(false);
     setProgress({ position: 0, duration: 0 });
     saveSession();
+    emit();
+  };
+
+  // ---- party sync ----
+  const snapshot = (): PlayerSnapshot => {
+    const p = ref.current;
+    let position = progress.position;
+    try { if (p?.isLoaded && p.currentTime > 0) position = p.currentTime; } catch {}
+    return { sound: currentRef.current, position, playing: playingRef.current, rate: rateRef.current };
+  };
+
+  const actualPosition = () => {
+    const p = ref.current;
+    try { return p && p.isLoaded && p.playing ? p.currentTime : null; } catch { return null; }
+  };
+
+  const subscribeControl = (fn: () => void) => {
+    controlSubs.current.add(fn);
+    return () => { controlSubs.current.delete(fn); };
+  };
+
+  // Make this phone match a change from another phone (the song, where it is, playing, speed).
+  const applyRemote = (st: PlayerSnapshot) => {
+    applying.current = true;
+    try {
+      if (st.rate !== rateRef.current) setRate(st.rate, false);
+      const cur = currentRef.current;
+      if (!st.sound) {
+        if (cur) stopIf(cur.id);
+        return;
+      }
+      if (cur?.id !== st.sound.id) {
+        enqueue(st.sound, [st.sound]);
+        startPlayback(st.sound, st.position, st.playing);
+        return;
+      }
+      const p = ref.current;
+      if (!p) {
+        if (st.playing) startPlayback(st.sound, st.position, true);
+        else { resumeAtRef.current = st.position; setProgress({ position: st.position, duration: progress.duration }); }
+        return;
+      }
+      if (isDrifting(p.isLoaded ? p.currentTime : progress.position, st.position)) {
+        p.seekTo(st.position).catch(() => {});
+        setProgress({ position: st.position, duration: progress.duration });
+      }
+      if (st.playing && !p.playing) { p.play(); setPlaying(true); }
+      if (!st.playing && p.playing) { p.pause(); setPlaying(false); }
+    } catch (e) {
+      console.warn('[party] apply failed', e);
+    } finally {
+      applying.current = false;
+    }
   };
 
   return (
     <PlayerCtx.Provider
-      value={{ current, playing, rate, mode, queue, canSkip: queue.length > 1, playNext, addToQueue, removeFromQueue, sleepEndsAt, sleepEndOfSong, setSleep, setRate, setMode, play, cue, toggle, next, prev, stopIf, seekTo }}
+      value={{ current, playing, rate, mode, queue, canSkip: queue.length > 1, playNext, addToQueue, removeFromQueue, sleepEndsAt, sleepEndOfSong, setSleep, setRate, setMode, play, cue, toggle, next, prev, stopIf, seekTo, snapshot, actualPosition, subscribeControl, applyRemote }}
     >
       {children}
     </PlayerCtx.Provider>
