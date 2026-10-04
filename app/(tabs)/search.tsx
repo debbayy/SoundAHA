@@ -70,6 +70,10 @@ export default function Search() {
       <SectionList
         sections={sections}
         keyExtractor={(x) => x.id}
+        // render only what fits on screen first, so switching to this tab shows it right away
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={7}
         renderItem={({ item, section }) => <SoundRow sound={item} queue={section.data} />}
         renderSectionHeader={({ section }) =>
           section.key === 'online' ? (

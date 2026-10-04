@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { Palette, space, useTheme } from '../../src/theme';
 import { SoundRow } from '../../src/components/SoundRow';
 import { ConfirmDialog } from '../../src/components/ConfirmDialog';
@@ -30,7 +31,8 @@ export default function Home() {
   const s = useMemo(() => makeStyles(t), [t]);
   const remote = useSounds();
   const { localSounds, importSounds, pickFolder, importFromFolder } = useLocalSounds();
-  const { play } = usePlayer();
+  const { cue } = usePlayer();
+  const router = useRouter();
   const bottom = useBottomSpace();
   const [cat, setCat] = useState('all');
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
@@ -96,6 +98,10 @@ export default function Home() {
       <FlatList
         data={list}
         keyExtractor={(x) => x.id}
+        // render only what fits on screen first, so switching to this tab shows it right away
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={7}
         renderItem={({ item }) => <SoundRow sound={item} queue={list} />}
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: bottom }}
         showsVerticalScrollIndicator={false}
@@ -125,7 +131,9 @@ export default function Home() {
             {hero && (
               <PressableScale
                 scaleTo={0.97}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); play(hero, sounds); }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); cue(hero, sounds); router.push('/player'); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${hero.title}`}
               >
                 <LinearGradient colors={['#7C5CFF', '#4A35D6', '#00B8D9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
                   <LinearGradient
@@ -138,10 +146,10 @@ export default function Home() {
                   <View style={{ flex: 1 }}>
                     <Text style={s.heroTag}>TRENDING NOW</Text>
                     <Text style={s.heroTitle} numberOfLines={1}>{hero.title}</Text>
-                    <Text style={s.heroSub}>Tap to play instantly</Text>
+                    <Text style={s.heroSub}>Tap to open</Text>
                   </View>
                   <Text style={{ fontSize: 44, marginRight: space.md }}>{hero.emoji ?? '🔥'}</Text>
-                  <View style={s.heroBtn}><Ionicons name="play" size={22} color={t.accent} style={{ marginLeft: 2 }} /></View>
+                  <View style={s.heroBtn}><Ionicons name="chevron-forward" size={22} color={t.accent} style={{ marginLeft: 2 }} /></View>
                 </LinearGradient>
               </PressableScale>
             )}

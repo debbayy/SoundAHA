@@ -1,7 +1,12 @@
 import { createContext, ReactNode, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Sound } from '../types';
+import { SEED } from '../data/seed';
+import { pickNext as pickFrom } from '../lib/queue';
+import { parseSession, serializeSession } from '../lib/playerSession';
+import { SleepChoice } from '../lib/sleep';
 
 // Playback speed range (slow ... fast) and the slider's step.
 export const MIN_RATE = 0.25;
@@ -10,6 +15,9 @@ export const RATE_STEP = 0.05;
 const clampRate = (r: number) => Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, r)) * 100) / 100;
 const RATE_KEY = 'soundly.playbackRate';
 const MODE_KEY = 'soundly.playMode';
+const SESSION_KEY = 'soundly.session'; // last song + its queue, written when the song changes
+const POS_KEY = 'soundly.sessionPos'; // { id, position } of the last song, written every few seconds
+const POS_SAVE_MS = 5000;
 
 // autoplay: when a song ends, start the next one from the list it was played from.
 // loop:     repeat the current song forever (wins over autoplay).
@@ -23,9 +31,13 @@ type Ctx = {
   rate: number; // playback speed, 1 = normal
   mode: PlayMode;
   canSkip: boolean; // there is more than one song in the queue
+  sleepEndsAt: number | null; // sleep timer: when playback pauses (ms timestamp)
+  sleepEndOfSong: boolean; // sleep timer: pause when the current song ends
+  setSleep: (choice: SleepChoice | null) => void; // null = turn the timer off
   setRate: (rate: number, save?: boolean) => void; // apply a speed; save=false while the slider is still being dragged
   setMode: (patch: Partial<PlayMode>) => void;
   play: (s: Sound, queue?: Sound[]) => void; // `queue` = the list the song was picked from
+  cue: (s: Sound, queue?: Sound[]) => void; // load a song without playing it (play / toggle starts it)
   toggle: () => void;
   next: () => void;
   prev: () => void;
@@ -35,7 +47,7 @@ type Ctx = {
 const noop = () => {};
 const PlayerCtx = createContext<Ctx>({
   current: null, playing: false, rate: 1, mode: DEFAULT_MODE, canSkip: false,
-  setRate: noop, setMode: noop, play: noop, toggle: noop, next: noop, prev: noop, stopIf: noop, seekTo: noop,
+  sleepEndsAt: null, sleepEndOfSong: false, setSleep: noop, setRate: noop, setMode: noop, play: noop, cue: noop, toggle: noop, next: noop, prev: noop, stopIf: noop, seekTo: noop,
 });
 export const usePlayer = () => useContext(PlayerCtx);
 
@@ -51,8 +63,6 @@ const setProgress = (next: Progress) => {
 };
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const useProgress = () => useSyncExternalStore(subscribe, () => progress);
-
-const hasSource = (s: Sound) => !!(s.audio_source ?? s.audio_url);
 
 // Keep playing when the app goes to the background or the screen locks. Applied again before
 // every song, not just once at start-up: if this call ever fails, iOS pauses the song as soon as
@@ -75,9 +85,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentRef = useRef<Sound | null>(null);
   const queueRef = useRef<Sound[]>([]);
   const historyRef = useRef<string[]>([]); // ids played before the current one, for "previous"
+  const resumeAtRef = useRef(0); // restored song: where to start once the user presses play
+  const lastPosSave = useRef(0);
+
+  // Sleep timer. The timeout covers the app on screen; Android can hold JS timers while the app is
+  // in the background, so the playback updates (which keep coming while a song plays) check too.
+  const [sleepEndsAt, setSleepEndsAt] = useState<number | null>(null);
+  const [sleepEndOfSong, setSleepEndOfSong] = useState(false);
+  const sleepAtRef = useRef<number | null>(null);
+  const sleepEndRef = useRef(false);
+  const sleepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     applyAudioMode();
+    Promise.all([AsyncStorage.getItem(SESSION_KEY), AsyncStorage.getItem(POS_KEY)])
+      .then(([raw, posRaw]) => {
+        if (currentRef.current) return; // the user already started a song
+        const ses = parseSession(raw, SEED);
+        if (!ses) return;
+        let position = 0;
+        try {
+          const p = JSON.parse(posRaw ?? 'null');
+          if (p?.id === ses.current.id && p.position > 0) position = p.position;
+        } catch {}
+        setQueue(ses.queue);
+        currentRef.current = ses.current;
+        setCurrent(ses.current);
+        resumeAtRef.current = position;
+        setProgress({ position, duration: ses.current.duration || 0 });
+      })
+      .catch(() => {});
+    const appState = AppState.addEventListener('change', (st) => { if (st !== 'active') savePosition(); });
     AsyncStorage.getItem(RATE_KEY)
       .then((v) => {
         const r = Number(v);
@@ -92,8 +130,61 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setModeState(m);
       })
       .catch(() => {});
-    return () => stopCurrent();
+    return () => {
+      appState.remove();
+      if (sleepTimer.current) clearTimeout(sleepTimer.current);
+      stopCurrent();
+    };
   }, []);
+
+  const saveSession = () => {
+    const cur = currentRef.current;
+    if (cur) AsyncStorage.setItem(SESSION_KEY, serializeSession(cur, queueRef.current, 0)).catch(() => {});
+    else AsyncStorage.multiRemove([SESSION_KEY, POS_KEY]).catch(() => {});
+  };
+
+  const savePosition = () => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    lastPosSave.current = Date.now();
+    AsyncStorage.setItem(POS_KEY, JSON.stringify({ id: cur.id, position: Math.floor(progress.position) })).catch(() => {});
+  };
+
+  const pause = () => {
+    try { ref.current?.pause(); } catch {}
+    setPlaying(false);
+    savePosition();
+  };
+
+  const clearSleep = () => {
+    if (sleepTimer.current) clearTimeout(sleepTimer.current);
+    sleepTimer.current = null;
+    sleepAtRef.current = null;
+    sleepEndRef.current = false;
+    setSleepEndsAt(null);
+    setSleepEndOfSong(false);
+    if (ref.current) ref.current.loop = modeRef.current.loop;
+  };
+
+  const sleepNow = () => {
+    clearSleep();
+    pause();
+  };
+
+  const setSleep = (choice: SleepChoice | null) => {
+    clearSleep();
+    if (choice === null) return;
+    if (choice === 'end') {
+      sleepEndRef.current = true;
+      setSleepEndOfSong(true);
+      if (ref.current) ref.current.loop = false; // a looping song never "ends"
+      return;
+    }
+    const ms = choice * 60_000;
+    sleepAtRef.current = Date.now() + ms;
+    setSleepEndsAt(sleepAtRef.current);
+    sleepTimer.current = setTimeout(sleepNow, ms);
+  };
 
   // Silence and free the loaded player. remove() alone doesn't always stop the sound (the lock
   // screen can still hold the player), so pause and release the lock screen first. Each step is
@@ -112,30 +203,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setQueueLen(list.length);
   };
 
-  // Next song to play after the current one, or null if there is none. Without shuffle the queue
-  // ends at its last song unless `wrap` is set (manual "next" wraps, autoplay does not).
-  const pickNext = (wrap: boolean): Sound | null => {
-    const q = queueRef.current;
-    const cur = currentRef.current;
-    if (!cur || q.length < 2) return null;
-    if (modeRef.current.shuffle) {
-      const pool = q.filter((x) => x.id !== cur.id && hasSource(x));
-      return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
-    }
-    const i = q.findIndex((x) => x.id === cur.id);
-    for (let step = 1; step < q.length; step++) {
-      const idx = i + step;
-      if (idx >= q.length && !wrap) return null;
-      const cand = q[idx % q.length];
-      if (hasSource(cand)) return cand;
-    }
-    return null;
-  };
+  const pickNext = (wrap: boolean) =>
+    pickFrom(queueRef.current, currentRef.current?.id, { shuffle: modeRef.current.shuffle, wrap });
 
-  const startPlayback = (s: Sound) => {
+  // `startAt`: seconds to begin from (a song restored from the last session).
+  const startPlayback = (s: Sound, startAt = 0) => {
     currentRef.current = s;
+    resumeAtRef.current = 0;
     setCurrent(s);
-    setProgress({ position: 0, duration: s.duration || 0 });
+    setProgress({ position: startAt, duration: s.duration || 0 });
+    saveSession();
     stopCurrent();
     const source = s.audio_source ?? (s.audio_url ? { uri: s.audio_url } : null);
     if (!source) { setPlaying(false); return; }
@@ -150,12 +227,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     ref.current = p;
     applyAudioMode();
     try {
-      p.loop = modeRef.current.loop;
+      p.loop = modeRef.current.loop && !sleepEndRef.current;
       p.addListener('playbackStatusUpdate', (st) => {
         if (ref.current !== p) return; // a replaced player must not move the bar or trigger autoplay
         setProgress({ position: st.currentTime, duration: st.duration || progress.duration });
-        if (st.didJustFinish) onEnded.current();
+        if (st.didJustFinish) { onEnded.current(); return; }
+        if (!st.playing) return;
+        if (sleepAtRef.current !== null && Date.now() >= sleepAtRef.current) { sleepNow(); return; }
+        if (Date.now() - lastPosSave.current >= POS_SAVE_MS) savePosition();
       });
+      if (startAt > 0) p.seekTo(startAt).catch(() => {});
       p.play();
       setPlaying(true);
     } catch {
@@ -178,17 +259,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {}
   };
 
-  const play = (s: Sound, list?: Sound[]) => {
+  const enqueue = (s: Sound, list?: Sound[]) => {
     if (list) setQueue(list);
     else if (!queueRef.current.some((x) => x.id === s.id)) setQueue([s]);
     const prevSong = currentRef.current;
     if (prevSong && prevSong.id !== s.id) historyRef.current = [...historyRef.current.slice(-49), prevSong.id];
+  };
+
+  const play = (s: Sound, list?: Sound[]) => {
+    enqueue(s, list);
     startPlayback(s);
+  };
+
+  // Show a song in the player, paused at the start. Nothing changes if it is already loaded.
+  const cue = (s: Sound, list?: Sound[]) => {
+    if (currentRef.current?.id === s.id) return;
+    enqueue(s, list);
+    stopCurrent();
+    currentRef.current = s;
+    resumeAtRef.current = 0;
+    setCurrent(s);
+    setPlaying(false);
+    setProgress({ position: 0, duration: s.duration || 0 });
+    saveSession();
   };
 
   // A song finished on its own.
   const onEnded = useRef(() => {});
   onEnded.current = () => {
+    if (sleepEndRef.current) {
+      clearSleep();
+      setPlaying(false);
+      setProgress({ position: 0, duration: progress.duration }); // reopen at the start, not at the end
+      savePosition();
+      return;
+    }
     if (modeRef.current.loop) {
       // The player loops by itself; if a platform still reports the end, just keep going.
       try { ref.current?.seekTo(0); ref.current?.play(); } catch {}
@@ -226,8 +331,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggle = () => {
     const p = ref.current;
-    if (!p) return;
-    if (p.playing) { p.pause(); setPlaying(false); }
+    if (!p) {
+      // a song restored from the last session is only loaded when the user presses play
+      const cur = currentRef.current;
+      if (cur) startPlayback(cur, resumeAtRef.current);
+      return;
+    }
+    if (p.playing) pause();
     else { if (p.duration > 0 && p.currentTime >= p.duration) p.seekTo(0); p.play(); setPlaying(true); }
   };
 
@@ -235,7 +345,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const m = { ...modeRef.current, ...patch };
     modeRef.current = m;
     setModeState(m);
-    if (ref.current) ref.current.loop = m.loop;
+    if (ref.current) ref.current.loop = m.loop && !sleepEndRef.current;
     AsyncStorage.setItem(MODE_KEY, JSON.stringify(m)).catch(() => {});
   };
 
@@ -249,7 +359,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const seekTo = (seconds: number) => {
     const p = ref.current;
-    if (!p) return;
+    if (!p) {
+      // restored song not loaded yet: remember the spot for when play is pressed
+      if (!currentRef.current) return;
+      const max = progress.duration;
+      const to = Math.max(0, max > 0 ? Math.min(seconds, max) : seconds);
+      resumeAtRef.current = to;
+      setProgress({ position: to, duration: progress.duration });
+      return;
+    }
     const max = p.duration || progress.duration;
     const to = Math.max(0, max > 0 ? Math.min(seconds, max) : seconds);
     setProgress({ position: to, duration: progress.duration }); // move the bar right away
@@ -260,16 +378,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const stopIf = (id: string) => {
     setQueue(queueRef.current.filter((x) => x.id !== id));
     historyRef.current = historyRef.current.filter((x) => x !== id);
-    if (currentRef.current?.id !== id) return;
+    if (currentRef.current?.id !== id) { saveSession(); return; }
     stopCurrent();
     currentRef.current = null;
+    resumeAtRef.current = 0;
     setCurrent(null);
     setPlaying(false);
     setProgress({ position: 0, duration: 0 });
+    saveSession();
   };
 
   return (
-    <PlayerCtx.Provider value={{ current, playing, rate, mode, canSkip: queueLen > 1, setRate, setMode, play, toggle, next, prev, stopIf, seekTo }}>
+    <PlayerCtx.Provider
+      value={{ current, playing, rate, mode, canSkip: queueLen > 1, sleepEndsAt, sleepEndOfSong, setSleep, setRate, setMode, play, cue, toggle, next, prev, stopIf, seekTo }}
+    >
       {children}
     </PlayerCtx.Provider>
   );
