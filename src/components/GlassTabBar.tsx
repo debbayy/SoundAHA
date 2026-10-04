@@ -1,6 +1,6 @@
 import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Animated, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,8 +8,6 @@ import * as Haptics from 'expo-haptics';
 import { Palette, TAB_BAR_HEIGHT, useTheme } from '../theme';
 import { Glass } from './Glass';
 import { usePlayer } from '../context/PlayerContext';
-import { useHasInlinePlayer } from './MiniPlayer';
-import { PlayerPeek } from './PlayerPeek';
 
 const ICONS: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
   index: ['home', 'home-outline'],
@@ -25,8 +23,8 @@ const PAD = 6;
 export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const t = useTheme();
-  const hasInlinePlayer = useHasInlinePlayer();
   const { current } = usePlayer();
+  const router = useRouter();
   const s = useMemo(() => makeStyles(t), [t]);
   const [w, setW] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
@@ -39,36 +37,60 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
 
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
+  // Swipe up on the bar to open the full player (while a song is loaded). There is no button for it:
+  // the swipe takes over from a tab's tap only once the finger clearly moves up, so taps still switch tabs.
+  // The bar itself stays put.
+  const hasSong = useRef(false);
+  hasSong.current = !!current;
+  const openPlayer = useRef(() => {});
+  openPlayer.current = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    router.push('/player');
+  };
+  const swipe = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) => hasSong.current && g.dy < -8 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: (_, g) => {
+        if (g.dy < -30 || g.vy < -0.5) openPlayer.current();
+      },
+    })
+  ).current;
+
   return (
     <View pointerEvents="box-none" style={[s.dock, { paddingBottom: Math.max(insets.bottom, 10) }]}>
       {/* soft edge: the list fades out just before the bar instead of being cut off */}
       <LinearGradient pointerEvents="none" colors={[t.bgFade0, t.bgFade1]} style={s.fade} />
-      {/* the player card normally sits in the list as the playing song's row; this is the fallback */}
-      {!hasInlinePlayer && current && <PlayerPeek />}
-      <Glass radius={TAB_BAR_HEIGHT / 2} intensity={55} style={s.bar}>
-        <View style={s.inner} onLayout={onLayout}>
-          {itemW > 0 && (
-            <Animated.View style={[s.pill, { width: itemW, transform: [{ translateX: x }] }]} />
-          )}
-          {state.routes.map((route, i) => {
-            const focused = state.index === i;
-            const label = descriptors[route.key].options.title ?? route.name;
-            const [on, off] = ICONS[route.name] ?? ['ellipse', 'ellipse-outline'];
-            const press = () => {
-              const ev = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !ev.defaultPrevented) {
-                Haptics.selectionAsync().catch(() => { });
-                navigation.navigate(route.name, route.params);
-              }
-            };
-            return (
-              <Pressable key={route.key} onPress={press} style={s.item} accessibilityRole="button" accessibilityState={{ selected: focused }} accessibilityLabel={label}>
-                <Ionicons name={focused ? on : off} size={22} color={focused ? t.text : t.muted} />
-              </Pressable>
-            );
-          })}
-        </View>
-      </Glass>
+      <View
+        {...swipe.panHandlers}
+        accessibilityActions={current ? [{ name: 'magicTap', label: 'Open player' }] : undefined}
+        onAccessibilityAction={() => openPlayer.current()} // screen readers can't swipe
+      >
+        <Glass radius={TAB_BAR_HEIGHT / 2} intensity={55} style={s.bar}>
+          <View style={s.inner} onLayout={onLayout}>
+            {itemW > 0 && (
+              <Animated.View style={[s.pill, { width: itemW, transform: [{ translateX: x }] }]} />
+            )}
+            {state.routes.map((route, i) => {
+              const focused = state.index === i;
+              const label = descriptors[route.key].options.title ?? route.name;
+              const [on, off] = ICONS[route.name] ?? ['ellipse', 'ellipse-outline'];
+              const press = () => {
+                const ev = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                if (!focused && !ev.defaultPrevented) {
+                  Haptics.selectionAsync().catch(() => { });
+                  navigation.navigate(route.name, route.params);
+                }
+              };
+              return (
+                <Pressable key={route.key} onPress={press} style={s.item} accessibilityRole="button" accessibilityState={{ selected: focused }} accessibilityLabel={label}>
+                  <Ionicons name={focused ? on : off} size={22} color={focused ? t.text : t.muted} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </Glass>
+      </View>
     </View>
   );
 }

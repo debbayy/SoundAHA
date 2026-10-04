@@ -17,14 +17,24 @@ import { usePlayer } from '../../src/context/PlayerContext';
 import { FolderScan, FolderSong, ImportResult, normTitle, useLocalSounds } from '../../src/context/LocalSoundsContext';
 import { FolderSongsDialog } from '../../src/components/FolderSongsDialog';
 import { useBottomSpace } from '../../src/lib/useBottomSpace';
+import { useLibrary } from '../../src/context/LibraryContext';
+import { resolveIds, topPlayed } from '../../src/lib/library';
 
 const CATS = [
   { key: 'all', label: 'All' },
+  { key: 'recent', label: '🕘 Recent' },
+  { key: 'top', label: '🏆 Top' },
   { key: 'meme', label: '😂 Meme' },
   { key: 'music', label: '🎵 Music' },
   { key: 'trending', label: '🔥 Trending' },
   { key: 'local', label: '📱 My Sounds' },
 ];
+
+const EMPTY: Record<string, string> = {
+  local: 'No imported sounds yet. Tap the folder button to open a music folder, or + to pick songs one by one.',
+  recent: 'Songs you play will show up here.',
+  top: 'Play a song a couple of times and it shows up here.',
+};
 
 export default function Home() {
   const t = useTheme();
@@ -36,8 +46,15 @@ export default function Home() {
   const bottom = useBottomSpace();
   const [cat, setCat] = useState('all');
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
-  const sounds = [...localSounds, ...remote];
-  const list = cat === 'all' ? sounds : sounds.filter((x) => x.category === cat);
+  const { stats } = useLibrary();
+  const sounds = useMemo(() => [...localSounds, ...remote], [localSounds, remote]);
+  const list = useMemo(() => {
+    if (cat === 'all') return sounds;
+    // play history: newest first / most played first
+    if (cat === 'recent') return resolveIds(stats.recent, [sounds], stats.online);
+    if (cat === 'top') return resolveIds(topPlayed(stats, 30), [sounds], stats.online);
+    return sounds.filter((x) => x.category === cat);
+  }, [cat, sounds, stats]);
   const hero = remote.find((x) => x.category === 'trending') ?? remote[0];
 
   const [folder, setFolder] = useState<FolderScan | null>(null);
@@ -106,7 +123,7 @@ export default function Home() {
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingTop: space.sm, paddingBottom: bottom }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={s.empty}>{cat === 'local' ? 'No imported sounds yet. Tap the folder button to open a music folder, or + to pick songs one by one.' : 'No sounds'}</Text>
+          <Text style={s.empty}>{EMPTY[cat] ?? 'No sounds'}</Text>
         }
         ListHeaderComponent={
           <View>

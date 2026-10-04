@@ -17,8 +17,10 @@ import { BRAND_TINT } from '../src/components/tints';
 import { ConfirmDialog } from '../src/components/ConfirmDialog';
 import { SleepDialog, useSleepLeft } from '../src/components/SleepDialog';
 import { PlayerMenu } from '../src/components/PlayerMenu';
+import { AddToPlaylistDialog } from '../src/components/SoundActions';
 import { useFavorites } from '../src/context/FavoritesContext';
 import { shareSound } from '../src/lib/shareSound';
+import { upNext } from '../src/lib/queue';
 
 const CATEGORY: Record<string, string> = { meme: 'Meme', music: 'Music', trending: 'Trending', local: 'My Sounds' };
 const tick = () => Haptics.selectionAsync().catch(() => {});
@@ -30,12 +32,13 @@ export default function Player() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev } = usePlayer();
+  const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev, queue } = usePlayer();
   const { isFav, toggleFav } = useFavorites();
   const sleepLeft = useSleepLeft();
   const [speedOpen, setSpeedOpen] = useState(false);
   const [sleepOpen, setSleepOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
   // iOS can't show a second popup while the menu's is still fading out, so wait for it there.
   const fromMenu = (fn: () => void) => {
     setMenuOpen(false);
@@ -88,6 +91,7 @@ export default function Player() {
   const artist = current.artist || CATEGORY[current.category] || 'Soundly';
   const on = (active: boolean) => (active ? '#fff' : t.btnText);
   const faved = isFav(current.id);
+  const upNextCount = upNext(queue, current.id).length;
 
   return (
     <Backdrop>
@@ -185,6 +189,8 @@ export default function Player() {
         items={[
           // toggles keep the menu open so the new state is visible; the others open something else
           { key: 'fav', icon: faved ? 'heart' : 'heart-outline', label: faved ? 'Remove from favorites' : 'Add to favorites', active: faved, onPress: () => { tick(); toggleFav(current); } },
+          { key: 'queue', icon: 'list-outline', label: 'Queue', value: upNextCount ? String(upNextCount) : undefined, onPress: () => fromMenu(() => router.push('/queue')) },
+          { key: 'playlist', icon: 'albums-outline', label: 'Add to playlist', onPress: () => fromMenu(() => setPlaylistOpen(true)) },
           { key: 'speed', icon: 'speedometer-outline', label: 'Playback speed', value: `${rate}x`, active: rate !== 1, onPress: () => fromMenu(() => setSpeedOpen(true)) },
           { key: 'auto', icon: 'infinite', label: 'Autoplay', value: mode.autoplay ? 'On' : 'Off', active: mode.autoplay, onPress: () => { tick(); setMode({ autoplay: !mode.autoplay }); } },
           { key: 'sleep', icon: 'moon', label: 'Sleep timer', value: sleepLeft ?? 'Off', active: !!sleepLeft, onPress: () => fromMenu(() => setSleepOpen(true)) },
@@ -201,6 +207,7 @@ export default function Player() {
         onConfirm={() => setShareError(false)}
         onCancel={() => setShareError(false)}
       />
+      <AddToPlaylistDialog sound={current} visible={playlistOpen} onClose={() => setPlaylistOpen(false)} />
       <SleepDialog visible={sleepOpen} onClose={() => setSleepOpen(false)} />
       <SpeedDialog visible={speedOpen} rate={rate} onChange={(r) => setRate(r, false)} onCommit={(r) => setRate(r, true)} onClose={() => setSpeedOpen(false)} />
     </Backdrop>

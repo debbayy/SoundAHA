@@ -10,6 +10,8 @@ const dark = {
   accent: '#7C5CFF',
   accent2: '#00E5FF',
   danger: '#FF4D8D',
+  success: '#22C55E', // swipe-to-favorite
+  destroy: '#EF4444', // swipe-to-delete
   border: 'rgba(255,255,255,0.10)',
   radius: 22,
   blurTint: 'dark' as 'dark' | 'light',
@@ -58,6 +60,8 @@ const light: Palette = {
   accent: '#6A4CFF',
   accent2: '#0090B5',
   danger: '#F0366F',
+  success: '#16A34A',
+  destroy: '#DC2626',
   border: 'rgba(19,19,43,0.08)',
   radius: 22,
   blurTint: 'light',

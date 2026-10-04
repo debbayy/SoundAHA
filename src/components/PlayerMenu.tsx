@@ -30,25 +30,36 @@ export function PlayerMenu({ visible, top, items, onClose }: Props) {
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close menu" />
       <View style={[s.wrap, { top }]} pointerEvents="box-none">
         <Glass opaque radius={18}>
-          {items.map((it, i) => (
-            <Pressable
-              key={it.key}
-              onPress={it.onPress}
-              disabled={it.busy}
-              style={({ pressed }) => [s.item, i > 0 && s.divider, pressed && s.pressed]}
-              accessibilityRole="menuitem"
-              accessibilityLabel={it.value ? `${it.label}: ${it.value}` : it.label}
-            >
-              {it.busy
-                ? <ActivityIndicator size="small" color={t.text} style={s.icon} />
-                : <Ionicons name={it.icon} size={20} color={it.active ? t.accent2 : t.text} style={s.icon} />}
-              <Text style={s.label} numberOfLines={1}>{it.label}</Text>
-              {!!it.value && <Text style={[s.value, it.active && { color: t.accent2 }]}>{it.value}</Text>}
-            </Pressable>
-          ))}
+          <MenuRows items={items} />
         </Glass>
       </View>
     </Modal>
+  );
+}
+
+// The rows of a menu; also used inside other popups (the song actions).
+export function MenuRows({ items }: { items: MenuItem[] }) {
+  const t = useTheme();
+  const s = useMemo(() => makeStyles(t), [t]);
+  return (
+    <>
+      {items.map((it, i) => (
+        <Pressable
+          key={it.key}
+          onPress={it.onPress}
+          disabled={it.busy}
+          style={({ pressed }) => [s.item, i > 0 && s.divider, pressed && s.pressed]}
+          accessibilityRole="menuitem"
+          accessibilityLabel={it.value ? `${it.label}: ${it.value}` : it.label}
+        >
+          {it.busy
+            ? <ActivityIndicator size="small" color={t.text} style={s.icon} />
+            : <Ionicons name={it.icon} size={20} color={it.active ? t.accent2 : t.text} style={s.icon} />}
+          <Text style={s.label} numberOfLines={1}>{it.label}</Text>
+          {!!it.value && <Text style={[s.value, it.active && { color: t.accent2 }]}>{it.value}</Text>}
+        </Pressable>
+      ))}
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { pickNext } from '../queue';
+import { append, insertNext, pickNext, upNext } from '../queue';
 import { Sound } from '../../types';
 
 const song = (id: string, audio_url = `https://x/${id}.mp3`): Sound => ({ id, title: id, category: 'music', audio_url, duration: 10 });
@@ -34,5 +34,26 @@ describe('pickNext', () => {
   it('returns null when nothing else is playable', () => {
     expect(pickNext([song('a'), song('b', '')], 'a', { shuffle: true, wrap: true })).toBeNull();
     expect(pickNext([song('a'), song('b', '')], 'a', { shuffle: false, wrap: true })).toBeNull();
+  });
+});
+
+describe('queue edits', () => {
+  const list = () => [song('a'), song('b'), song('c')];
+  const order = (q: Sound[]) => q.map((x) => x.id);
+
+  it('play next puts the song right after the current one', () => {
+    expect(order(insertNext(list(), 'a', song('x')))).toEqual(['a', 'x', 'b', 'c']);
+    expect(order(insertNext(list(), 'a', song('c')))).toEqual(['a', 'c', 'b']); // moved, not duplicated
+    expect(order(insertNext(list(), 'a', song('a')))).toEqual(['a', 'b', 'c']); // current song: unchanged
+  });
+
+  it('add to queue puts the song at the end', () => {
+    expect(order(append(list(), 'a', song('x')))).toEqual(['a', 'b', 'c', 'x']);
+    expect(order(append(list(), 'a', song('b')))).toEqual(['a', 'c', 'b']);
+  });
+
+  it('up next lists what follows the current song', () => {
+    expect(order(upNext(list(), 'b'))).toEqual(['c']);
+    expect(order(upNext(list(), 'zz'))).toEqual(['a', 'b', 'c']);
   });
 });

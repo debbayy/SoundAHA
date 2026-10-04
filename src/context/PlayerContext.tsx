@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Sound } from '../types';
 import { SEED } from '../data/seed';
-import { pickNext as pickFrom } from '../lib/queue';
+import { append, insertNext, pickNext as pickFrom } from '../lib/queue';
+import { useLibrary } from './LibraryContext';
 import { parseSession, serializeSession } from '../lib/playerSession';
 import { SleepChoice } from '../lib/sleep';
 
@@ -30,7 +31,11 @@ type Ctx = {
   playing: boolean;
   rate: number; // playback speed, 1 = normal
   mode: PlayMode;
+  queue: Sound[]; // the list being played through (includes the current song)
   canSkip: boolean; // there is more than one song in the queue
+  playNext: (s: Sound) => void; // put a song right after the current one
+  addToQueue: (s: Sound) => void; // put a song at the end of the queue
+  removeFromQueue: (id: string) => void;
   sleepEndsAt: number | null; // sleep timer: when playback pauses (ms timestamp)
   sleepEndOfSong: boolean; // sleep timer: pause when the current song ends
   setSleep: (choice: SleepChoice | null) => void; // null = turn the timer off
@@ -46,7 +51,7 @@ type Ctx = {
 };
 const noop = () => {};
 const PlayerCtx = createContext<Ctx>({
-  current: null, playing: false, rate: 1, mode: DEFAULT_MODE, canSkip: false,
+  current: null, playing: false, rate: 1, mode: DEFAULT_MODE, queue: [], canSkip: false, playNext: noop, addToQueue: noop, removeFromQueue: noop,
   sleepEndsAt: null, sleepEndOfSong: false, setSleep: noop, setRate: noop, setMode: noop, play: noop, cue: noop, toggle: noop, next: noop, prev: noop, stopIf: noop, seekTo: noop,
 });
 export const usePlayer = () => useContext(PlayerCtx);
@@ -77,7 +82,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
   const [mode, setModeState] = useState<PlayMode>(DEFAULT_MODE);
-  const [queueLen, setQueueLen] = useState(0);
+  const [queue, setQueueState] = useState<Sound[]>([]);
+  const { recordPlay } = useLibrary();
+  const recordRef = useRef(recordPlay);
+  recordRef.current = recordPlay;
 
   // Refs mirror the state the audio callbacks need, so they never read a stale value.
   const rateRef = useRef(1);
@@ -200,7 +208,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const setQueue = (list: Sound[]) => {
     queueRef.current = list;
-    setQueueLen(list.length);
+    setQueueState(list);
   };
 
   const pickNext = (wrap: boolean) =>
@@ -239,6 +247,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (startAt > 0) p.seekTo(startAt).catch(() => {});
       p.play();
       setPlaying(true);
+      recordRef.current(s);
     } catch {
       stopCurrent();
       setPlaying(false);
@@ -374,6 +383,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     p.seekTo(to).catch(() => {});
   };
 
+  // Queue edits. With nothing loaded yet, the song simply starts playing.
+  const playNext = (s: Sound) => {
+    if (!currentRef.current) { play(s); return; }
+    setQueue(insertNext(queueRef.current, currentRef.current.id, s));
+    saveSession();
+  };
+
+  const addToQueue = (s: Sound) => {
+    if (!currentRef.current) { play(s); return; }
+    setQueue(append(queueRef.current, currentRef.current.id, s));
+    saveSession();
+  };
+
+  const removeFromQueue = (id: string) => {
+    if (id === currentRef.current?.id) return; // the playing song stays; skip it with next instead
+    setQueue(queueRef.current.filter((x) => x.id !== id));
+    saveSession();
+  };
+
   // A song was deleted: drop it from the queue, and stop the player if it is the one loaded.
   const stopIf = (id: string) => {
     setQueue(queueRef.current.filter((x) => x.id !== id));
@@ -390,7 +418,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   return (
     <PlayerCtx.Provider
-      value={{ current, playing, rate, mode, canSkip: queueLen > 1, sleepEndsAt, sleepEndOfSong, setSleep, setRate, setMode, play, cue, toggle, next, prev, stopIf, seekTo }}
+      value={{ current, playing, rate, mode, queue, canSkip: queue.length > 1, playNext, addToQueue, removeFromQueue, sleepEndsAt, sleepEndOfSong, setSleep, setRate, setMode, play, cue, toggle, next, prev, stopIf, seekTo }}
     >
       {children}
     </PlayerCtx.Provider>

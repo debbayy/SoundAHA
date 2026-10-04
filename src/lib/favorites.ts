@@ -1,4 +1,5 @@
 import { Sound } from '../types';
+import { resolveIds } from './library';
 
 // Favorites live on the phone first, so they work without an account and for every kind of sound.
 // `ids` is newest first. Online (Freesound) results are not in any other list, so a copy of each
@@ -45,8 +46,4 @@ export function mergeRemote(store: FavStore, remoteIds: string[]): { store: FavS
 
 // The favorite songs, newest first, found in the given lists. Favorites whose song is gone (a
 // deleted import, a sound removed from the server) are left out.
-export function resolveFavs(store: FavStore, lists: Sound[][]): Sound[] {
-  const byId = new Map<string, Sound>();
-  for (const list of lists) for (const s of list) if (!byId.has(s.id)) byId.set(s.id, s);
-  return store.ids.map((id) => byId.get(id) ?? store.online[id]).filter((x): x is Sound => !!x);
-}
+export const resolveFavs = (store: FavStore, lists: Sound[][]): Sound[] => resolveIds(store.ids, lists, store.online);

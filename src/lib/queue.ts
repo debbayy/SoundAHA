@@ -25,3 +25,23 @@ export function pickNext(
   }
   return null;
 }
+
+// "Play next": the song goes right after the current one (moved there if it was already queued).
+export function insertNext(queue: Sound[], currentId: string | undefined, s: Sound): Sound[] {
+  if (s.id === currentId) return queue;
+  const rest = queue.filter((x) => x.id !== s.id);
+  const i = rest.findIndex((x) => x.id === currentId);
+  return [...rest.slice(0, i + 1), s, ...rest.slice(i + 1)];
+}
+
+// "Add to queue": the song goes to the end (moved there if it was already queued).
+export function append(queue: Sound[], currentId: string | undefined, s: Sound): Sound[] {
+  if (s.id === currentId) return queue;
+  return [...queue.filter((x) => x.id !== s.id), s];
+}
+
+// The songs that will play after the current one, in order (what the queue screen lists).
+export function upNext(queue: Sound[], currentId: string | undefined): Sound[] {
+  const i = queue.findIndex((x) => x.id === currentId);
+  return i < 0 ? queue : queue.slice(i + 1);
+}
