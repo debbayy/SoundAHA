@@ -10,10 +10,12 @@ import { LocalSoundsProvider } from '../src/context/LocalSoundsContext';
 import { PlayerProvider } from '../src/context/PlayerContext';
 import { Backdrop } from '../src/components/Backdrop';
 import { SoundActionsHost } from '../src/components/SoundActions';
+import { useAuthLinks } from '../src/lib/useAuthLinks';
 import { useTheme } from '../src/theme';
 
 export default function RootLayout() {
   const t = useTheme();
+  useAuthLinks(); // email links (confirm sign-up, reset password) sign the user in
 
   // The navigation theme must follow the app theme, otherwise react-navigation paints its own
   // (light) background behind the screens.

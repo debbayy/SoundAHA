@@ -10,6 +10,11 @@ const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const ENDPOINT = `${SUPABASE_URL}/functions/v1/freesound-search`;
 export const freesoundReady = SUPABASE_URL.length > 0;
 
+// Set EXPO_PUBLIC_FREESOUND_COMMERCIAL_ONLY=1 once the app earns money (ads, premium): sounds under
+// a NonCommercial license (CC BY-NC) may not be used in a commercial app, so they are left out.
+const COMMERCIAL_ONLY = process.env.EXPO_PUBLIC_FREESOUND_COMMERCIAL_ONLY === '1';
+export const licenseAllowed = (licenseUrl: string, commercialOnly = COMMERCIAL_ONLY) => !commercialOnly || !/\/by-nc/i.test(licenseUrl);
+
 const SAVED_KEY = 'soundly.freesoundCache';
 const SAVED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_SAVED = 40; // queries kept on the phone
@@ -79,7 +84,7 @@ export async function searchFreesound(query: string, signal?: AbortSignal): Prom
   if (res.status === 429) throw new Error('rate-limited');
   if (!res.ok) throw new Error(`freesound ${res.status}`);
   const json: { results?: FsResult[] } = await res.json();
-  const list = (json.results ?? []).filter((r) => r.previews).map(toSound).filter((x) => x.audio_url);
+  const list = (json.results ?? []).filter((r) => r.previews && licenseAllowed(r.license)).map(toSound).filter((x) => x.audio_url);
   memory.set(q, list);
   remember(q, list);
   return list;

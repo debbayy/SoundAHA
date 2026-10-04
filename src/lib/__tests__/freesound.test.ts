@@ -103,3 +103,15 @@ describe('searchFreesound', () => {
     await expect(load('https://p.supabase.co').searchFreesound('b')).rejects.toThrow('freesound 500');
   });
 });
+
+describe('licenseAllowed', () => {
+  const { licenseAllowed } = load('https://p.supabase.co');
+  it('keeps everything by default, drops NonCommercial when the app is commercial', () => {
+    const nc = 'http://creativecommons.org/licenses/by-nc/4.0/';
+    const by = 'http://creativecommons.org/licenses/by/4.0/';
+    expect(licenseAllowed(nc, false)).toBe(true);
+    expect(licenseAllowed(nc, true)).toBe(false);
+    expect(licenseAllowed(by, true)).toBe(true);
+    expect(licenseAllowed('http://creativecommons.org/publicdomain/zero/1.0/', true)).toBe(true);
+  });
+});
