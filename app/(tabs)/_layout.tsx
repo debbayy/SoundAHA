@@ -8,7 +8,8 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: 'transparent' },
-        animation: 'fade',
+        // No tab animation: with 'fade', a tab opened for the first time could stay at opacity 0 (blank)
+        // when the switch was interrupted or the JS thread was busy rendering its list.
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />

@@ -3,6 +3,7 @@ import { Stack, DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { AuthProvider } from '../src/context/AuthContext';
+import { FavoritesProvider } from '../src/context/FavoritesContext';
 import { LocalSoundsProvider } from '../src/context/LocalSoundsContext';
 import { PlayerProvider } from '../src/context/PlayerContext';
 import { Backdrop } from '../src/components/Backdrop';
@@ -25,25 +26,27 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <LocalSoundsProvider>
-        <PlayerProvider>
-          <ThemeProvider value={navTheme}>
-            <StatusBar style={t.isDark ? 'light' : 'dark'} />
-            <Backdrop>
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}>
-                <Stack.Screen
-                  name="player"
-                  options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: t.bg } }}
-                />
-                <Stack.Screen
-                  name="login"
-                  options={{ presentation: 'modal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: t.bg } }}
-                />
-              </Stack>
-            </Backdrop>
-          </ThemeProvider>
-        </PlayerProvider>
-      </LocalSoundsProvider>
+      <FavoritesProvider>
+        <LocalSoundsProvider>
+          <PlayerProvider>
+            <ThemeProvider value={navTheme}>
+              <StatusBar style={t.isDark ? 'light' : 'dark'} />
+              <Backdrop>
+                <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}>
+                  <Stack.Screen
+                    name="player"
+                    options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: t.bg } }}
+                  />
+                  <Stack.Screen
+                    name="login"
+                    options={{ presentation: 'modal', animation: 'slide_from_bottom', contentStyle: { backgroundColor: t.bg } }}
+                  />
+                </Stack>
+              </Backdrop>
+            </ThemeProvider>
+          </PlayerProvider>
+        </LocalSoundsProvider>
+      </FavoritesProvider>
     </AuthProvider>
   );
 }

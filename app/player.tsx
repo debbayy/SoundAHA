@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Image, PanResponder, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,9 @@ import { Vinyl } from '../src/components/Vinyl';
 import { coverOf } from '../src/components/SoundArt';
 import { BRAND_TINT } from '../src/components/tints';
 import { ConfirmDialog } from '../src/components/ConfirmDialog';
+import { SleepDialog, useSleepLeft } from '../src/components/SleepDialog';
+import { PlayerMenu } from '../src/components/PlayerMenu';
+import { useFavorites } from '../src/context/FavoritesContext';
 import { shareSound } from '../src/lib/shareSound';
 
 const CATEGORY: Record<string, string> = { meme: 'Meme', music: 'Music', trending: 'Trending', local: 'My Sounds' };
@@ -28,7 +31,16 @@ export default function Player() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { current, playing, toggle, rate, setRate, mode, setMode, canSkip, next, prev } = usePlayer();
+  const { isFav, toggleFav } = useFavorites();
+  const sleepLeft = useSleepLeft();
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [sleepOpen, setSleepOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // iOS can't show a second popup while the menu's is still fading out, so wait for it there.
+  const fromMenu = (fn: () => void) => {
+    setMenuOpen(false);
+    setTimeout(fn, Platform.OS === 'ios' ? 350 : 0);
+  };
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(false);
 
@@ -75,6 +87,7 @@ export default function Player() {
   const art = Math.min(width - space.xl * 2, height * 0.5);
   const artist = current.artist || CATEGORY[current.category] || 'Soundly';
   const on = (active: boolean) => (active ? '#fff' : t.btnText);
+  const faved = isFav(current.id);
 
   return (
     <Backdrop>
@@ -92,9 +105,19 @@ export default function Player() {
           <LiquidButton compact hitSlop={10} style={s.round} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Close player">
             <Ionicons name="chevron-down" size={24} color={t.btnText} />
           </LiquidButton>
-          <Text style={s.now}>NOW PLAYING</Text>
-          <LiquidButton compact hitSlop={10} style={s.speed} onPress={() => setSpeedOpen(true)} accessibilityRole="button" accessibilityLabel={`Playback speed ${rate}x`}>
-            <Text style={[s.speedText, { color: rate === 1 ? t.btnText : t.accent2 }]}>{`${rate}x`}</Text>
+          <View style={s.nowWrap} pointerEvents="none">
+            <Text style={s.now}>NOW PLAYING</Text>
+            {/* settings tucked in the menu still show here while they are changed from normal */}
+            {(rate !== 1 || sleepLeft) && (
+              <Text style={s.note}>
+                {rate !== 1 && `${rate}x`}
+                {rate !== 1 && sleepLeft && '   ·   '}
+                {sleepLeft && <><Ionicons name="moon" size={10} color={t.accent2} />{`  ${sleepLeft}`}</>}
+              </Text>
+            )}
+          </View>
+          <LiquidButton compact hitSlop={10} style={s.round} onPress={() => { tick(); setMenuOpen(true); }} accessibilityRole="button" accessibilityLabel="More options">
+            <Ionicons name="ellipsis-vertical" size={20} color={t.btnText} />
           </LiquidButton>
         </View>
 
@@ -153,25 +176,21 @@ export default function Player() {
             {mode.loop && <Text style={s.one}>1</Text>}
           </LiquidButton>
         </View>
-
-        <View style={s.bottomRow}>
-          <LiquidButton
-            compact
-            tint={mode.autoplay ? BRAND_TINT : undefined}
-            style={s.auto}
-            onPress={() => { tick(); setMode({ autoplay: !mode.autoplay }); }}
-            accessibilityRole="button"
-            accessibilityState={{ selected: mode.autoplay }}
-            accessibilityLabel={mode.autoplay ? 'Autoplay on' : 'Autoplay off'}
-          >
-            <Ionicons name="infinite" size={18} color={on(mode.autoplay)} />
-            <Text style={[s.autoText, { color: on(mode.autoplay) }]}>{mode.autoplay ? 'Autoplay on' : 'Autoplay off'}</Text>
-          </LiquidButton>
-          <LiquidButton compact hitSlop={8} style={s.small} disabled={sharing} onPress={onShare} accessibilityRole="button" accessibilityLabel="Share this song">
-            {sharing ? <ActivityIndicator color={t.btnText} /> : <Ionicons name="share-outline" size={20} color={t.btnText} />}
-          </LiquidButton>
-        </View>
       </View>
+
+      <PlayerMenu
+        visible={menuOpen}
+        top={insets.top + space.sm + 50}
+        onClose={() => setMenuOpen(false)}
+        items={[
+          // toggles keep the menu open so the new state is visible; the others open something else
+          { key: 'fav', icon: faved ? 'heart' : 'heart-outline', label: faved ? 'Remove from favorites' : 'Add to favorites', active: faved, onPress: () => { tick(); toggleFav(current); } },
+          { key: 'speed', icon: 'speedometer-outline', label: 'Playback speed', value: `${rate}x`, active: rate !== 1, onPress: () => fromMenu(() => setSpeedOpen(true)) },
+          { key: 'auto', icon: 'infinite', label: 'Autoplay', value: mode.autoplay ? 'On' : 'Off', active: mode.autoplay, onPress: () => { tick(); setMode({ autoplay: !mode.autoplay }); } },
+          { key: 'sleep', icon: 'moon', label: 'Sleep timer', value: sleepLeft ?? 'Off', active: !!sleepLeft, onPress: () => fromMenu(() => setSleepOpen(true)) },
+          { key: 'share', icon: 'share-outline', label: 'Share', busy: sharing, onPress: () => fromMenu(onShare) },
+        ]}
+      />
 
       <ConfirmDialog
         visible={shareError}
@@ -182,6 +201,7 @@ export default function Player() {
         onConfirm={() => setShareError(false)}
         onCancel={() => setShareError(false)}
       />
+      <SleepDialog visible={sleepOpen} onClose={() => setSleepOpen(false)} />
       <SpeedDialog visible={speedOpen} rate={rate} onChange={(r) => setRate(r, false)} onCommit={(r) => setRate(r, true)} onClose={() => setSpeedOpen(false)} />
     </Backdrop>
   );
@@ -215,9 +235,9 @@ const makeStyles = (t: Palette) =>
     screen: { flex: 1, paddingHorizontal: space.xl },
     top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: space.sm },
     round: { width: 44, height: 44 },
-    speed: { height: 44, minWidth: 56, paddingHorizontal: 10 },
-    speedText: { fontSize: 14, fontWeight: '700' },
+    nowWrap: { position: 'absolute', left: 0, right: 0, top: space.sm, bottom: 0, alignItems: 'center', justifyContent: 'center' },
     now: { fontSize: 11, fontWeight: '700', letterSpacing: 2, color: t.muted },
+    note: { fontSize: 11, fontWeight: '700', color: t.accent2, marginTop: 2 },
     discWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     info: { alignItems: 'center', marginBottom: space.md },
     title: { fontSize: 26, fontWeight: '800', color: t.text, textAlign: 'center', letterSpacing: -0.5 },
@@ -229,7 +249,4 @@ const makeStyles = (t: Palette) =>
     skip: { width: 52, height: 52 },
     play: { width: 76, height: 76 },
     one: { position: 'absolute', fontSize: 8, fontWeight: '800', color: '#fff', top: 15 },
-    bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: space.lg },
-    auto: { height: 40, paddingHorizontal: 18, flexDirection: 'row', gap: 8 },
-    autoText: { fontSize: 13, fontWeight: '700' },
   });
