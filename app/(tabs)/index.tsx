@@ -14,7 +14,8 @@ import { PressableScale } from '../../src/components/PressableScale';
 import { ThemeToggle } from '../../src/components/ThemeToggle';
 import { useSounds } from '../../src/data/useSounds';
 import { usePlayer } from '../../src/context/PlayerContext';
-import { FolderScan, FolderSong, ImportResult, normTitle, useLocalSounds } from '../../src/context/LocalSoundsContext';
+import { FolderScan, FolderSong, ImportProgress, ImportResult, normTitle, useLocalSounds } from '../../src/context/LocalSoundsContext';
+import { LoadingDialog } from '../../src/components/LoadingDialog';
 import { FolderSongsDialog } from '../../src/components/FolderSongsDialog';
 import { useBottomSpace } from '../../src/lib/useBottomSpace';
 import { useLibrary } from '../../src/context/LibraryContext';
@@ -46,6 +47,8 @@ export default function Home() {
   const bottom = useBottomSpace();
   const [cat, setCat] = useState('all');
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  // Shown while songs are copied in / a folder is read, so the screen never just sits there.
+  const [loading, setLoading] = useState<{ title: string; message?: string } | null>(null);
   const { stats } = useLibrary();
   const sounds = useMemo(() => [...localSounds, ...remote], [localSounds, remote]);
   const list = useMemo(() => {
@@ -72,23 +75,30 @@ export default function Home() {
   };
 
   const onImport = async () => {
+    const onProgress: ImportProgress = (done, total) =>
+      setLoading({ title: 'Adding songs…', message: total > 1 ? `Song ${Math.min(done + 1, total)} of ${total}` : 'Just a moment' });
     try {
-      showResult(await importSounds());
+      const res = await importSounds(onProgress);
+      setLoading(null);
+      showResult(res);
     } catch {
+      setLoading(null);
       setNotice({ title: 'Import failed', message: 'Could not read that file. Try another audio file.' });
     }
   };
 
   const onOpenFolder = async () => {
     try {
-      const scan = await pickFolder();
+      const scan = await pickFolder(() => setLoading({ title: 'Reading folder…', message: 'Looking for songs' }));
+      setLoading(null);
       if (scan) setFolder(scan);
     } catch {
+      setLoading(null);
       setNotice({ title: "Can't open folder", message: 'Could not read that folder. Try another one.' });
     }
   };
 
-  const onImportFolder = async (songs: FolderSong[], onProgress: (done: number) => void) => {
+  const onImportFolder = async (songs: FolderSong[], onProgress: ImportProgress) => {
     const res = await importFromFolder(songs, onProgress);
     setFolder(null);
     showResult(res);
@@ -105,6 +115,7 @@ export default function Home() {
         onConfirm={() => setNotice(null)}
         onCancel={() => setNotice(null)}
       />
+      <LoadingDialog visible={!!loading} title={loading?.title ?? ''} message={loading?.message} />
       <FolderSongsDialog
         scan={folder}
         libraryTitles={libraryTitles}

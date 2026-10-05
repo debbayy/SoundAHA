@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -24,7 +24,7 @@ const PANEL_GAP = 8; // the colored panel trails the row with a small gap
 
 // `queue` is the list this row belongs to: autoplay / next / shuffle move through it.
 // Swipe right: favorite (or unfavorite). Swipe left: delete (imported songs only).
-export function SoundRow({ sound, queue }: { sound: Sound; queue?: Sound[] }) {
+function SoundRowView({ sound, queue }: { sound: Sound; queue?: Sound[] }) {
   const t = useTheme();
   const s = useMemo(() => makeStyles(t), [t]);
   const { play, current, playing, stopIf } = usePlayer();
@@ -200,6 +200,9 @@ export function SoundRow({ sound, queue }: { sound: Sound; queue?: Sound[] }) {
     </View>
   );
 }
+
+// Memoized: a list re-rendering (a dialog opening, a filter changing) leaves unchanged rows alone.
+export const SoundRow = memo(SoundRowView);
 
 const makeStyles = (t: Palette) => StyleSheet.create({
   outer: { marginBottom: 10 },
