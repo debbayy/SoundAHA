@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
+import { LITE } from '../lib/perf';
 
 type Props = Omit<PressableProps, 'style' | 'children'> & {
   children?: ReactNode;
@@ -33,7 +34,7 @@ export function LiquidButton({
       <View
         style={[
           s.body,
-          { borderRadius: radius, borderColor: t.btnBorder, backgroundColor: t.btnFill, boxShadow: `${t.btnRim}, ${shadow}` },
+          { borderRadius: radius, borderColor: t.btnBorder, backgroundColor: t.btnFill, boxShadow: LITE ? undefined : `${t.btnRim}, ${shadow}` },
           style,
         ]}
       >
@@ -42,13 +43,15 @@ export function LiquidButton({
           <LinearGradient pointerEvents="none" colors={tint} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
         )}
         {/* ::before — glossy highlight: inset 2px 8% 52% 8% */}
-        <LinearGradient
-          pointerEvents="none"
-          colors={t.btnHighlight}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={s.gloss}
-        />
+        {!LITE && (
+          <LinearGradient
+            pointerEvents="none"
+            colors={t.btnHighlight}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={s.gloss}
+          />
+        )}
         {label ? <Text style={[s.label, { color: tint ? '#fff' : t.btnText }, labelStyle]}>{label}</Text> : children}
       </View>
     </PressableScale>

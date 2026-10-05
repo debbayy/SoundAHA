@@ -16,12 +16,15 @@ export type ImportResult = { added: number; skipped: number; skippedTitles: stri
 // An audio file found in a folder the user opened (not imported yet).
 export type FolderSong = { uri: string; name: string; title: string };
 export type FolderScan = { folderName: string; songs: FolderSong[] };
+// Import progress: `done` of `total` songs handled so far.
+export type ImportProgress = (done: number, total: number) => void;
 
 type Ctx = {
   localSounds: Sound[];
-  importSounds: () => Promise<ImportResult>;
-  pickFolder: () => Promise<FolderScan | null>; // null = the user backed out of the folder picker
-  importFromFolder: (songs: FolderSong[], onProgress?: (done: number) => void) => Promise<ImportResult>;
+  importSounds: (onProgress?: ImportProgress) => Promise<ImportResult>;
+  // onPicked: the folder was chosen and is about to be read (reading a big folder takes a moment)
+  pickFolder: (onPicked?: () => void) => Promise<FolderScan | null>; // null = the user backed out of the folder picker
+  importFromFolder: (songs: FolderSong[], onProgress?: ImportProgress) => Promise<ImportResult>;
   saveOnline: (s: Sound) => Promise<ImportResult>; // download an online (Freesound) sound into My Sounds
   removeSound: (id: string) => void;
 };
@@ -39,6 +42,9 @@ export const useLocalSounds = () => useContext(LocalCtx);
 // Two songs count as the same title when they match ignoring case, spacing and a trailing "(1)"
 // (what Android adds to a re-downloaded file). The library keeps one entry per title.
 export const normTitle = (s: string) => s.toLowerCase().replace(/\s*\(\d+\)\s*$/, '').replace(/\s+/g, ' ').trim();
+
+// Lets the UI draw (progress text, the loading card) between the blocking file reads.
+const yieldToUI = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms));
 
 const titleOf = (name: string) => name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Untitled';
 
@@ -113,14 +119,15 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
   };
 
   // Adds the given files to the library, skipping songs that are already in it (same contents or same title).
-  const addFiles = useCallback(async (files: { uri: string; name: string; artist?: string }[], onProgress?: (done: number) => void): Promise<ImportResult> => {
+  const addFiles = useCallback(async (files: { uri: string; name: string; artist?: string }[], onProgress?: ImportProgress): Promise<ImportResult> => {
     const added: Sound[] = [];
     const skippedTitles: string[] = [];
     const seen = new Set(localSounds.map((x) => x.fingerprint).filter(Boolean) as string[]);
     const seenTitles = new Set(localSounds.map((x) => normTitle(x.title)));
     for (let i = 0; i < files.length; i++) {
       const a = files[i];
-      onProgress?.(i);
+      onProgress?.(i, files.length);
+      await yieldToUI();
       const id = `local-${Date.now()}-${added.length}`;
       try {
         const uri = isNative ? await copyIntoApp(a.uri, id, a.name) : a.uri;
@@ -162,20 +169,23 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
         // skip files that can't be copied
       }
     }
-    onProgress?.(files.length);
+    onProgress?.(files.length, files.length);
     if (added.length) persist([...added, ...localSounds]);
     return { added: added.length, skipped: skippedTitles.length, skippedTitles };
   }, [localSounds]);
 
-  const importSounds = useCallback(async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true, copyToCacheDirectory: true });
+  const importSounds = useCallback(async (onProgress?: ImportProgress) => {
+    // Android: no cache copy. The picker would copy every file before returning (the screen just
+    // sits there, black on slow phones) and then addFiles copies it again; we read the content://
+    // file ourselves, behind the loading card. iOS needs the copy to be able to read the file.
+    const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true, copyToCacheDirectory: Platform.OS !== 'android' });
     if (res.canceled || !res.assets?.length) return empty;
-    return addFiles(res.assets);
+    return addFiles(res.assets, onProgress);
   }, [addFiles]);
 
   // Opens the system folder picker and lists the songs inside (Android). Android keeps the read
   // permission, so the picker starts in the last folder next time.
-  const pickFolder = useCallback(async (): Promise<FolderScan | null> => {
+  const pickFolder = useCallback(async (onPicked?: () => void): Promise<FolderScan | null> => {
     const last = (await AsyncStorage.getItem(FOLDER_KEY).catch(() => null)) ?? undefined;
     let dir: Directory;
     try {
@@ -186,13 +196,15 @@ export function LocalSoundsProvider({ children }: { children: ReactNode }) {
     }
     if (!dir?.uri) return null;
     AsyncStorage.setItem(FOLDER_KEY, dir.uri).catch(() => {});
+    onPicked?.();
+    await yieldToUI(50); // long enough for the loading card to be up before the (blocking) scan
     const songs = findAudio(dir).sort((a, b) => a.title.localeCompare(b.title));
     const folderName = decodeURIComponent(dir.uri).replace(/\/$/, '').split(/[/:]/).pop() || 'Folder';
     return { folderName, songs };
   }, []);
 
   const importFromFolder = useCallback(
-    (songs: FolderSong[], onProgress?: (done: number) => void) => addFiles(songs, onProgress),
+    (songs: FolderSong[], onProgress?: ImportProgress) => addFiles(songs, onProgress),
     [addFiles],
   );
 

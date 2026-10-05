@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { GRADIENT, useTheme } from '../theme';
 import { Sound } from '../types';
 import { coverOf } from './SoundArt';
+import { shadow } from '../lib/perf';
 
 const GROOVES = [0.97, 0.9, 0.83, 0.76, 0.69, 0.62, 0.55];
 const SECONDS_PER_TURN = 9;
@@ -41,12 +42,18 @@ export function Vinyl({ sound, playing, size }: { sound: Sound; playing: boolean
         width: size,
         height: size,
         borderRadius: size / 2,
-        boxShadow: playing
+        boxShadow: shadow(playing
           ? '0 18 40 rgba(0,0,0,0.55), 0 0 60 rgba(124,92,255,0.45)'
-          : '0 14 32 rgba(0,0,0,0.5), 0 0 30 rgba(124,92,255,0.18)',
+          : '0 14 32 rgba(0,0,0,0.5), 0 0 30 rgba(124,92,255,0.18)'),
       }}
     >
-      <Animated.View style={[s.disc, { width: size, height: size, borderRadius: size / 2, transform: [{ rotate }] }]}>
+      {/* drawn once into a GPU texture and only rotated after that, instead of redrawing the
+          grooves and label every frame */}
+      <Animated.View
+        renderToHardwareTextureAndroid={playing}
+        shouldRasterizeIOS={playing}
+        style={[s.disc, { width: size, height: size, borderRadius: size / 2, transform: [{ rotate }] }]}
+      >
         {GROOVES.map((g) => (
           <View
             key={g}
@@ -63,7 +70,7 @@ export function Vinyl({ sound, playing, size }: { sound: Sound; playing: boolean
         {/* label / cover */}
         <View style={{ width: label, height: label, borderRadius: label / 2, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
           {cover ? (
-            <Image source={{ uri: cover }} style={{ width: label, height: label }} resizeMode="cover" />
+            <Image source={{ uri: cover }} style={{ width: label, height: label }} resizeMode="cover" resizeMethod="resize" />
           ) : (
             <>
               <LinearGradient colors={GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />

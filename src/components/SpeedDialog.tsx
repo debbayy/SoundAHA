@@ -3,6 +3,7 @@ import { Animated, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text,
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { GRADIENT, Palette, space, useTheme } from '../theme';
+import { shadow } from '../lib/perf';
 import { MAX_RATE, MIN_RATE, RATE_STEP } from '../context/PlayerContext';
 import { DialogFrame } from './DialogFrame';
 
@@ -146,7 +147,7 @@ const makeStyles = (t: Palette) =>
       backgroundColor: '#fff',
       borderWidth: StyleSheet.hairlineWidth * 2,
       borderColor: 'rgba(0,0,0,0.12)',
-      boxShadow: '0 3 8 rgba(0,0,0,0.35)',
+      boxShadow: shadow('0 3 8 rgba(0,0,0,0.35)'),
     },
     marks: { height: 18, marginTop: 2 },
     mark: { position: 'absolute', width: 44, marginLeft: -22, textAlign: 'center', fontSize: 11, fontWeight: '600', color: t.muted },

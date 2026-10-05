@@ -3,7 +3,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Palette, space, useTheme } from '../theme';
-import { FolderScan, FolderSong } from '../context/LocalSoundsContext';
+import { FolderScan, FolderSong, ImportProgress } from '../context/LocalSoundsContext';
 import { DialogFrame } from './DialogFrame';
 import { GlassButton } from './GlassButton';
 
@@ -11,7 +11,7 @@ type Props = {
   scan: FolderScan | null; // the folder the user opened; null hides the dialog
   libraryTitles: Set<string>; // normalized titles already in My Sounds
   normTitle: (s: string) => string;
-  onImport: (songs: FolderSong[], onProgress: (done: number) => void) => Promise<void>;
+  onImport: (songs: FolderSong[], onProgress: ImportProgress) => Promise<void>;
   onClose: () => void;
 };
 
@@ -51,7 +51,7 @@ export function FolderSongsDialog({ scan, libraryTitles, normTitle, onImport, on
     const chosen = songs.filter((x) => picked.has(x.uri));
     setProgress(0);
     try {
-      await onImport(chosen, setProgress);
+      await onImport(chosen, (done) => setProgress(done));
     } finally {
       setProgress(null);
     }

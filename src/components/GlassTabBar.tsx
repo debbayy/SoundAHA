@@ -1,5 +1,5 @@
 import { ComponentProps, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +19,9 @@ const ICONS: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionico
 type BottomTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
 const PAD = 6;
+// Gap between our bar and Android's own navigation bar (buttons or gesture line), so the two don't
+// sit edge to edge. Old phones without edge-to-edge report a 0 inset; they still get the gap.
+const ANDROID_LIFT = 12;
 
 export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -58,7 +61,7 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
   ).current;
 
   return (
-    <View pointerEvents="box-none" style={[s.dock, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    <View pointerEvents="box-none" style={[s.dock, { paddingBottom: Platform.OS === 'android' ? insets.bottom + ANDROID_LIFT : Math.max(insets.bottom, 10) }]}>
       {/* soft edge: the list fades out just before the bar instead of being cut off */}
       <LinearGradient pointerEvents="none" colors={[t.bgFade0, t.bgFade1]} style={s.fade} />
       <View

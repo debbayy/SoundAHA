@@ -3,6 +3,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Palette, space, useTheme } from '../theme';
+import { shadow } from '../lib/perf';
 import { Sound } from '../types';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
@@ -180,6 +181,6 @@ const makeStyles = (t: Palette) =>
     create: { paddingHorizontal: 6, paddingVertical: 8 },
     createText: { fontSize: 15, fontWeight: '800', color: t.accent2 },
     toastWrap: { position: 'absolute', left: 0, right: 0, bottom: 150, alignItems: 'center', paddingHorizontal: space.lg },
-    toast: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 20, backgroundColor: t.glassModal, maxWidth: '100%', boxShadow: t.dropShadow },
+    toast: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 20, backgroundColor: t.glassModal, maxWidth: '100%', boxShadow: shadow(t.dropShadow) },
     toastText: { fontSize: 14, fontWeight: '700', color: t.text, flexShrink: 1 },
   });

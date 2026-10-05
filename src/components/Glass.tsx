@@ -3,6 +3,7 @@ import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme';
+import { LITE } from '../lib/perf';
 
 type Props = {
   children?: ReactNode;
@@ -26,6 +27,16 @@ export function Glass({ children, style, radius = 22, intensity = 40, blur = tru
   // Repeated list rows skip the outer shadow and the specular line.
   const boxShadow = blur ? `${t.dropShadow}, ${t.dropRim}` : t.dropRim;
   const inset = Math.min(radius, 28) * 0.8;
+
+  // Low-end phones: one flat tinted layer with a hairline edge. No shadows, gradients or clipping,
+  // which are each an extra translucent draw per frame and add up fast in a scrolling list.
+  if (LITE) {
+    return (
+      <View style={[{ borderRadius: radius, backgroundColor: fill, borderWidth: StyleSheet.hairlineWidth * 1.5, borderColor: t.glassStroke }, opaque && { overflow: 'hidden' }, style]}>
+        {children}
+      </View>
+    );
+  }
 
   return (
     <View style={[{ borderRadius: radius, overflow: 'hidden', boxShadow }, style]}>
