@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { AudioPlayer, createAudioPlayer, requestNotificationPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { Sound } from '../types';
 import { SEED } from '../data/seed';
 import { append, insertNext, pickNext as pickFrom } from '../lib/queue';
@@ -89,6 +89,15 @@ export const useProgress = () => useSyncExternalStore(subscribe, () => progress)
 const applyAudioMode = () =>
   setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'doNotMix' })
     .catch((e) => console.warn('[player] setAudioModeAsync failed', e));
+
+// Android 13+ hides the playback notification (and with it the lock-screen controls) until the
+// user allows notifications. Asked once, the first time a song plays.
+let askedNotifications = false;
+const askNotificationsOnce = () => {
+  if (askedNotifications || Platform.OS !== 'android' || (Platform.Version as number) < 33) return;
+  askedNotifications = true;
+  requestNotificationPermissionsAsync().catch(() => {});
+};
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const ref = useRef<AudioPlayer | null>(null);
@@ -245,35 +254,50 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent(s);
     setProgress({ position: startAt, duration: s.duration || 0 });
     saveSession();
-    stopCurrent();
     // a song from the internet plays from its saved copy when there is one, and is saved for next time
     const source = s.audio_source ?? (s.audio_url ? { uri: cachedUri(s.audio_url) ?? s.audio_url } : null);
-    if (!source) { setPlaying(false); return; }
+    if (!source) { stopCurrent(); setPlaying(false); return; }
     if (s.audio_source === undefined && isRemote(s.audio_url)) cacheInBackground(s.audio_url);
-    let p: AudioPlayer;
-    try {
-      p = createAudioPlayer(source, { updateInterval: STATUS_MS });
-    } catch {
-      setPlaying(false);
-      return;
+    // Reuse the loaded player for the next song instead of making a new one. On Android, dropping a
+    // player also drops the lock-screen media service, and a new one can't be started while the
+    // screen is locked, so autoplay would stop (or the app be killed) after the first song.
+    let p = ref.current;
+    if (p) {
+      try {
+        p.pause();
+        p.replace(source);
+      } catch {
+        stopCurrent();
+        p = null;
+      }
     }
-    // Track it before anything else can throw, so the next song always finds and stops it.
-    ref.current = p;
     applyAudioMode();
-    try {
-      p.loop = modeRef.current.loop && !sleepEndRef.current;
-      p.addListener('playbackStatusUpdate', (st) => {
-        if (ref.current !== p) return; // a replaced player must not move the bar or trigger autoplay
+    if (!p) {
+      try {
+        p = createAudioPlayer(source, { updateInterval: STATUS_MS });
+      } catch {
+        setPlaying(false);
+        return;
+      }
+      // Track it before anything else can throw, so the next song always finds and stops it.
+      ref.current = p;
+      const player = p;
+      player.addListener('playbackStatusUpdate', (st) => {
+        if (ref.current !== player) return; // a stopped player must not move the bar or trigger autoplay
         setProgress({ position: st.currentTime, duration: st.duration || progress.duration });
         if (st.didJustFinish) { onEnded.current(); return; }
         if (!st.playing) return;
         if (sleepAtRef.current !== null && Date.now() >= sleepAtRef.current) { sleepNow(); return; }
         if (Date.now() - lastPosSave.current >= POS_SAVE_MS) savePosition();
       });
+    }
+    try {
+      p.loop = modeRef.current.loop && !sleepEndRef.current;
       if (startAt > 0) p.seekTo(startAt).catch(() => {});
       if (autoplay) {
         p.play();
         recordRef.current(s);
+        askNotificationsOnce();
       }
       setPlaying(autoplay);
     } catch {
