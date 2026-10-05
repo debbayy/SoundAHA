@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Palette, space, useTheme } from '../src/theme';
+import { LITE, shadow } from '../src/lib/perf';
 import { usePlayer } from '../src/context/PlayerContext';
 import { Backdrop } from '../src/components/Backdrop';
 import { LiquidButton } from '../src/components/LiquidButton';
@@ -98,7 +99,8 @@ export default function Player() {
 
   return (
     <Backdrop>
-      {cover && (
+      {/* the blurred backdrop is blurred on the CPU on Android; old phones skip it */}
+      {cover && !LITE && (
         <>
           <Image source={{ uri: cover }} blurRadius={45} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.4 }] }]} />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: t.isDark ? 'rgba(5,5,12,0.62)' : 'rgba(238,240,251,0.7)' }]} />
@@ -233,10 +235,10 @@ function AlbumCover({ uri, playing, size }: { uri: string; playing: boolean; siz
         height: size,
         borderRadius: radius,
         transform: [{ scale }],
-        boxShadow: playing ? '0 22 44 rgba(0,0,0,0.5)' : '0 12 28 rgba(0,0,0,0.4)',
+        boxShadow: shadow(playing ? '0 22 44 rgba(0,0,0,0.5)' : '0 12 28 rgba(0,0,0,0.4)'),
       }}
     >
-      <Image source={{ uri }} resizeMode="cover" style={{ width: size, height: size, borderRadius: radius }} />
+      <Image source={{ uri }} resizeMode="cover" resizeMethod="resize" style={{ width: size, height: size, borderRadius: radius }} />
     </Animated.View>
   );
 }

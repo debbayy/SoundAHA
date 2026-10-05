@@ -3,6 +3,7 @@ import { Animated, LayoutChangeEvent, PanResponder, StyleSheet, Text, View } fro
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { GRADIENT, Palette, useTheme } from '../theme';
+import { shadow } from '../lib/perf';
 import { usePlayer, useProgress } from '../context/PlayerContext';
 
 const fmt = (sec: number) => {
@@ -93,6 +94,6 @@ const makeStyles = (t: Palette) =>
       height: 16,
       borderRadius: 8,
       backgroundColor: '#fff',
-      boxShadow: '0 2 6 rgba(0,0,0,0.35)',
+      boxShadow: shadow('0 2 6 rgba(0,0,0,0.35)'),
     },
   });

@@ -10,6 +10,7 @@ import { parseSession, serializeSession } from '../lib/playerSession';
 import { SleepChoice } from '../lib/sleep';
 import { isDrifting } from '../lib/party';
 import { cachedUri, cacheInBackground, isRemote } from '../lib/audioCache';
+import { LITE } from '../lib/perf';
 
 // Playback speed range (slow ... fast) and the slider's step.
 export const MIN_RATE = 0.25;
@@ -21,6 +22,8 @@ const MODE_KEY = 'soundly.playMode';
 const SESSION_KEY = 'soundly.session'; // last song + its queue, written when the song changes
 const POS_KEY = 'soundly.sessionPos'; // { id, position } of the last song, written every few seconds
 const POS_SAVE_MS = 5000;
+// How often the player reports its position. Old phones get fewer updates (and re-renders).
+const STATUS_MS = LITE ? 500 : 250;
 
 // autoplay: when a song ends, start the next one from the list it was played from.
 // loop:     repeat the current song forever (wins over autoplay).
@@ -249,7 +252,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (s.audio_source === undefined && isRemote(s.audio_url)) cacheInBackground(s.audio_url);
     let p: AudioPlayer;
     try {
-      p = createAudioPlayer(source, { updateInterval: 250 });
+      p = createAudioPlayer(source, { updateInterval: STATUS_MS });
     } catch {
       setPlaying(false);
       return;

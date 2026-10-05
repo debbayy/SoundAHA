@@ -19,7 +19,7 @@ export function SoundArt({ sound, size, radius = size * 0.3, style }: Props) {
       style={[{ width: size, height: size, borderRadius: radius, overflow: 'hidden', backgroundColor: t.fill, alignItems: 'center', justifyContent: 'center' }, style]}
     >
       {uri && !broken ? (
-        <Image source={{ uri }} style={{ width: size, height: size }} resizeMode="cover" onError={() => setBroken(true)} />
+        <Image source={{ uri }} style={{ width: size, height: size }} resizeMode="cover" resizeMethod="resize" onError={() => setBroken(true)} />
       ) : (
         <Text style={{ fontSize: size * 0.5 }}>{sound.emoji ?? '🔊'}</Text>
       )}
